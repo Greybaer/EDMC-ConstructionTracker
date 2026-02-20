@@ -116,7 +116,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
     header_label.grid(row=0, column=0, columnspan=1, sticky=tk.W, pady=(0, 4))
 
-    dark_mode_btn = tk.Button(frame, text="Light" if dark_mode else "Dark",
+    dark_mode_btn = tk.Button(frame, text="Dark" if dark_mode else "Light",
                                font=("Helvetica", 7), command=_toggle_dark_mode, width=4)
     dark_mode_btn.grid(row=0, column=2, sticky=tk.E, pady=(0, 4), padx=(4, 0))
 
@@ -322,7 +322,7 @@ def _toggle_dark_mode() -> None:
     global dark_mode
     dark_mode = not dark_mode
     if dark_mode_btn:
-        dark_mode_btn.config(text="Light" if dark_mode else "Dark")
+        dark_mode_btn.config(text="Dark" if dark_mode else "Light")
     _apply_theme()
     _update_display()
     _save_data()
@@ -361,16 +361,16 @@ def _apply_theme() -> None:
     if site_selector and HAS_TK:
         try:
             style = ttk.Style()
-            if dark_mode:
-                style.configure("Dark.TCombobox",
-                                fieldbackground=DARK_BG,
-                                background=DARK_BG,
-                                foreground=DARK_FG,
-                                selectbackground=DARK_BG,
-                                selectforeground=DARK_FG)
-                site_selector.config(style="Dark.TCombobox")
-            else:
-                site_selector.config(style="TCombobox")
+            style.map("TCombobox",
+                      fieldbackground=[("readonly", bg)],
+                      foreground=[("readonly", fg)],
+                      selectbackground=[("readonly", bg)],
+                      selectforeground=[("readonly", fg)])
+            style.configure("TCombobox",
+                            fieldbackground=bg,
+                            background=bg,
+                            foreground=fg)
+            site_selector.config(style="TCombobox")
         except Exception:
             pass
 

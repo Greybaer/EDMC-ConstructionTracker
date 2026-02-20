@@ -337,6 +337,21 @@ def test_dark_mode_toggle():
     print("[PASS] Dark mode toggle switches state")
 
 
+def test_dark_mode_button_label():
+    _reset_plugin()
+    plugin.dark_mode = False
+    plugin._toggle_dark_mode()
+    assert plugin.dark_mode is True
+    if plugin.dark_mode_btn:
+        assert plugin.dark_mode_btn.cget("text") == "Dark"
+    plugin._toggle_dark_mode()
+    assert plugin.dark_mode is False
+    if plugin.dark_mode_btn:
+        assert plugin.dark_mode_btn.cget("text") == "Light"
+
+    print("[PASS] Dark mode button label shows current mode")
+
+
 def test_journal_entry_cargo_event():
     with tempfile.TemporaryDirectory() as tmpdir:
         cargo_data = {
@@ -493,6 +508,7 @@ if __name__ == "__main__":
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
     test_dark_mode_toggle()
+    test_dark_mode_button_label()
     test_save_and_load_data()
     test_persistence_across_restart()
     test_dark_mode_preference_saved()
