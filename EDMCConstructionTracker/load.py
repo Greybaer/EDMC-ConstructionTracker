@@ -15,7 +15,7 @@ except ImportError:
     ttk = None
 
 plugin_name = "Construction Tracker"
-plugin_version = "1.0.0"
+plugin_version = "1.1.0"
 
 logger = logging.getLogger(f"{plugin_name}")
 
@@ -23,6 +23,7 @@ carrier_cargo: Dict[str, int] = {}
 construction_sites: Dict[int, Dict[str, Any]] = {}
 selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
+plugin_dir: Optional[str] = None
 dark_mode: bool = False
 
 frame = None
@@ -32,54 +33,116 @@ progress_var = None
 material_frame = None
 status_var = None
 dark_mode_btn = None
+header_label = None
+site_label = None
+progress_label_widget = None
+status_label_widget = None
 
 DARK_BG = "#1e1e1e"
 DARK_FG = "#d4d4d4"
 DARK_HEADER_FG = "#ffffff"
 DARK_GREEN = "#4ec94e"
 DARK_STATUS_FG = "#888888"
+DARK_BTN_BG = "#333333"
 LIGHT_BG = "SystemButtonFace"
 LIGHT_FG = "black"
 LIGHT_GREEN = "green"
 LIGHT_STATUS_FG = "gray"
 
+SAVE_FILE = "construction_tracker_data.json"
 
-def plugin_start3(plugin_dir: str) -> str:
+
+def _get_save_path() -> Optional[str]:
+    if plugin_dir:
+        return os.path.join(plugin_dir, SAVE_FILE)
+    return None
+
+
+def _save_data() -> None:
+    path = _get_save_path()
+    if not path:
+        return
+    try:
+        save_obj = {
+            "dark_mode": dark_mode,
+            "selected_site_id": selected_site_id,
+            "construction_sites": {str(k): v for k, v in construction_sites.items()},
+        }
+        with open(path, "w") as f:
+            json.dump(save_obj, f, indent=2)
+        logger.debug(f"Saved data to {path}")
+    except Exception as e:
+        logger.error(f"Error saving data: {e}")
+
+
+def _load_data() -> None:
+    global dark_mode, selected_site_id, construction_sites
+    path = _get_save_path()
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, "r") as f:
+            save_obj = json.load(f)
+        dark_mode = save_obj.get("dark_mode", False)
+        selected_site_id = save_obj.get("selected_site_id")
+        raw_sites = save_obj.get("construction_sites", {})
+        construction_sites.clear()
+        for k, v in raw_sites.items():
+            construction_sites[int(k)] = v
+        logger.info(f"Loaded {len(construction_sites)} construction sites from save")
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+
+
+def plugin_start3(plugin_dir_path: str) -> str:
+    global plugin_dir
+    plugin_dir = plugin_dir_path
+    _load_data()
     logger.info(f"{plugin_name} v{plugin_version} started")
     return plugin_name
 
 
 def plugin_stop() -> None:
+    _save_data()
     logger.info(f"{plugin_name} stopped")
 
 
 def plugin_app(parent: tk.Frame) -> tk.Frame:
-    global frame, site_selector, site_var, progress_var, material_frame, status_var, dark_mode_btn
+    global frame, site_selector, site_var, progress_var, material_frame, status_var
+    global dark_mode_btn, header_label, site_label, progress_label_widget, status_label_widget
 
     frame = tk.Frame(parent)
 
-    header = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
-    header.grid(row=0, column=0, columnspan=1, sticky=tk.W, pady=(0, 4))
+    header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
+    header_label.grid(row=0, column=0, columnspan=1, sticky=tk.W, pady=(0, 4))
 
-    dark_mode_btn = tk.Button(frame, text="Dark", font=("Helvetica", 7), command=_toggle_dark_mode, width=4)
+    dark_mode_btn = tk.Button(frame, text="Light" if dark_mode else "Dark",
+                               font=("Helvetica", 7), command=_toggle_dark_mode, width=4)
     dark_mode_btn.grid(row=0, column=2, sticky=tk.E, pady=(0, 4), padx=(4, 0))
 
-    tk.Label(frame, text="Site:").grid(row=1, column=0, sticky=tk.W)
+    site_label = tk.Label(frame, text="Site:")
+    site_label.grid(row=1, column=0, sticky=tk.W)
     site_var = tk.StringVar(value="No sites tracked")
     site_selector = ttk.Combobox(frame, textvariable=site_var, state="readonly", width=35)
     site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
     site_selector.bind("<<ComboboxSelected>>", _on_site_selected)
 
     progress_var = tk.StringVar(value="Progress: --")
-    progress_label = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
-    progress_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
+    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
+    progress_label_widget.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
-    status_label = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8), fg="gray")
-    status_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
+    status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8), fg="gray")
+    status_label_widget.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
     material_frame = tk.Frame(frame)
     material_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W)
+
+    _apply_theme()
+
+    if construction_sites:
+        _update_site_selector()
+        _update_display()
 
     return frame
 
@@ -94,6 +157,7 @@ def _on_site_selected(event=None) -> None:
         if site_data["display_name"] == selected_name:
             selected_site_id = mid
             _update_display()
+            _save_data()
             return
 
 
@@ -194,6 +258,7 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
 
     _update_site_selector()
     _update_display()
+    _save_data()
     logger.info(f"Processed construction depot: {display_name} ({progress:.1%})")
 
 
@@ -260,6 +325,7 @@ def _toggle_dark_mode() -> None:
         dark_mode_btn.config(text="Light" if dark_mode else "Dark")
     _apply_theme()
     _update_display()
+    _save_data()
 
 
 def _apply_theme() -> None:
@@ -270,42 +336,43 @@ def _apply_theme() -> None:
     fg = DARK_FG if dark_mode else LIGHT_FG
     header_fg = DARK_HEADER_FG if dark_mode else LIGHT_FG
     status_fg = DARK_STATUS_FG if dark_mode else LIGHT_STATUS_FG
+    btn_bg = DARK_BTN_BG if dark_mode else LIGHT_BG
 
     frame.config(bg=bg)
+
+    if header_label:
+        header_label.config(bg=bg, fg=header_fg)
+
+    if site_label:
+        site_label.config(bg=bg, fg=fg)
+
+    if progress_label_widget:
+        progress_label_widget.config(bg=bg, fg=fg)
+
+    if status_label_widget:
+        status_label_widget.config(bg=bg, fg=status_fg)
+
+    if dark_mode_btn:
+        dark_mode_btn.config(bg=btn_bg, fg=fg)
+
     if material_frame:
         material_frame.config(bg=bg)
 
-    for widget in frame.winfo_children():
-        widget_class = widget.winfo_class()
-        if widget_class == "Label":
-            widget.config(bg=bg)
-            current_text = widget.cget("text")
-            if current_text == "Construction Tracker":
-                widget.config(fg=header_fg)
-            elif widget == _get_status_label():
-                widget.config(fg=status_fg)
+    if site_selector and HAS_TK:
+        try:
+            style = ttk.Style()
+            if dark_mode:
+                style.configure("Dark.TCombobox",
+                                fieldbackground=DARK_BG,
+                                background=DARK_BG,
+                                foreground=DARK_FG,
+                                selectbackground=DARK_BG,
+                                selectforeground=DARK_FG)
+                site_selector.config(style="Dark.TCombobox")
             else:
-                widget.config(fg=fg)
-        elif widget_class == "Button":
-            widget.config(bg=bg, fg=fg)
-        elif widget_class == "Frame":
-            widget.config(bg=bg)
-
-    if dark_mode_btn:
-        dark_mode_btn.config(bg=bg, fg=fg)
-
-
-def _get_status_label() -> Optional[Any]:
-    if not frame:
-        return None
-    for widget in frame.winfo_children():
-        if widget.winfo_class() == "Label" and status_var:
-            try:
-                if widget.cget("textvariable") and str(widget.cget("textvariable")) == str(status_var):
-                    return widget
-            except Exception:
-                pass
-    return None
+                site_selector.config(style="TCombobox")
+        except Exception:
+            pass
 
 
 def _render_materials(materials: List[Dict[str, Any]]) -> None:
@@ -370,18 +437,21 @@ def journal_entry(
     if event_name == "Docked":
         _load_carrier_cargo()
         _update_carrier_amounts()
+        _save_data()
         if selected_site_id:
             _update_display()
 
     elif event_name == "Cargo":
         _load_carrier_cargo()
         _update_carrier_amounts()
+        _save_data()
         if selected_site_id:
             _update_display()
 
     elif event_name == "CargoTransfer":
         _load_carrier_cargo()
         _update_carrier_amounts()
+        _save_data()
         if selected_site_id:
             _update_display()
 
@@ -405,5 +475,6 @@ def journal_entry(
                             mat["required"], mat["provided"], mat["carrier"]
                         )
                         break
+            _save_data()
             if market_id == selected_site_id:
                 _update_display()

@@ -16,14 +16,28 @@ except (ImportError, RuntimeError):
 
 import load as plugin
 
+_test_tmpdir = tempfile.mkdtemp()
+
+
+def _reset_plugin():
+    plugin.construction_sites.clear()
+    plugin.carrier_cargo.clear()
+    plugin.selected_site_id = None
+    plugin.dark_mode = False
+    plugin.plugin_dir = _test_tmpdir
+    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
+    if os.path.exists(save_path):
+        os.remove(save_path)
+
 
 def test_plugin_start():
-    result = plugin.plugin_start3("/fake/plugin/dir")
+    result = plugin.plugin_start3(_test_tmpdir)
     assert result == "Construction Tracker", f"Expected 'Construction Tracker', got '{result}'"
     print("[PASS] plugin_start3 returns correct name")
 
 
 def test_construction_depot_processing():
+    _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100, "ceramiccomposites": 50}
 
     entry = {
@@ -63,18 +77,17 @@ def test_construction_depot_processing():
     assert alum["required"] == 500
     assert alum["provided"] == 200
     assert alum["carrier"] == 100
-    assert alum["completion"] == 200  # 500 - (200 + 100) = 200
+    assert alum["completion"] == 200
 
     ceramic = site["materials"][1]
     assert ceramic["carrier"] == 50
-    assert ceramic["completion"] == 150  # 300 - (100 + 50) = 150
+    assert ceramic["completion"] == 150
 
     print("[PASS] Construction depot processing with carrier amounts")
 
 
 def test_multiple_sites():
-    plugin.construction_sites.clear()
-    plugin.carrier_cargo = {}
+    _reset_plugin()
 
     entry1 = {
         "event": "ColonisationConstructionDepot",
@@ -136,7 +149,7 @@ def test_completion_amount_calculation():
 
 
 def test_carrier_cargo_update():
-    plugin.construction_sites.clear()
+    _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 0}
 
     entry = {
@@ -164,13 +177,13 @@ def test_carrier_cargo_update():
 
     mat = plugin.construction_sites[999]["materials"][0]
     assert mat["carrier"] == 80
-    assert mat["completion"] == 70  # 200 - (50 + 80) = 70
+    assert mat["completion"] == 70
 
     print("[PASS] Carrier cargo update recalculates CompletionAmount")
 
 
 def test_contribution_updates():
-    plugin.construction_sites.clear()
+    _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 50}
 
     depot_entry = {
@@ -193,7 +206,7 @@ def test_contribution_updates():
 
     mat = plugin.construction_sites[555]["materials"][0]
     assert mat["provided"] == 80
-    assert mat["completion"] == 270  # 400 - (80 + 50)
+    assert mat["completion"] == 270
 
     contrib_entry = {
         "event": "ColonisationContribution",
@@ -212,7 +225,7 @@ def test_contribution_updates():
 
     mat = plugin.construction_sites[555]["materials"][0]
     assert mat["provided"] == 100
-    assert mat["completion"] == 250  # 400 - (100 + 50)
+    assert mat["completion"] == 250
 
     print("[PASS] ColonisationContribution updates ProvidedAmount and recalculates CompletionAmount")
 
@@ -264,8 +277,7 @@ def test_clean_station_name():
 
 
 def test_display_name_with_ext_panel():
-    plugin.construction_sites.clear()
-    plugin.carrier_cargo = {}
+    _reset_plugin()
 
     entry = {
         "event": "ColonisationConstructionDepot",
@@ -315,14 +327,12 @@ def test_docked_event_loads_carrier_cargo():
 
 
 def test_dark_mode_toggle():
-    assert plugin.dark_mode is False or plugin.dark_mode is True
-    original = plugin.dark_mode
+    _reset_plugin()
     plugin.dark_mode = False
     plugin._toggle_dark_mode()
     assert plugin.dark_mode is True
     plugin._toggle_dark_mode()
     assert plugin.dark_mode is False
-    plugin.dark_mode = original
 
     print("[PASS] Dark mode toggle switches state")
 
@@ -353,6 +363,120 @@ def test_journal_entry_cargo_event():
     print("[PASS] journal_entry handles Cargo event")
 
 
+def test_save_and_load_data():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.dark_mode = True
+
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 8888,
+        "ConstructionProgress": 0.6,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 500,
+                "ProvidedAmount": 200,
+                "Payment": 1000,
+            }
+        ],
+    }
+    plugin._process_construction_depot(entry, "Persist Station", "Persist System")
+
+    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
+    assert os.path.exists(save_path), "Save file should exist after processing depot"
+
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["dark_mode"] is True
+    assert saved["selected_site_id"] == 8888
+    assert "8888" in saved["construction_sites"]
+    assert saved["construction_sites"]["8888"]["display_name"] == "Persist Station - Persist System"
+
+    plugin.construction_sites.clear()
+    plugin.selected_site_id = None
+    plugin.dark_mode = False
+
+    plugin._load_data()
+
+    assert plugin.dark_mode is True
+    assert plugin.selected_site_id == 8888
+    assert 8888 in plugin.construction_sites
+    site = plugin.construction_sites[8888]
+    assert site["display_name"] == "Persist Station - Persist System"
+    assert site["progress"] == 0.6
+    assert len(site["materials"]) == 1
+    assert site["materials"][0]["name"] == "Aluminium"
+    assert site["materials"][0]["required"] == 500
+    assert site["materials"][0]["provided"] == 200
+
+    print("[PASS] Data persistence: save and load works correctly")
+
+
+def test_persistence_across_restart():
+    _reset_plugin()
+    plugin.carrier_cargo = {"steel": 75}
+    plugin.dark_mode = True
+
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 4444,
+        "ConstructionProgress": 0.3,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 300,
+                "ProvidedAmount": 100,
+                "Payment": 500,
+            }
+        ],
+    }
+    plugin._process_construction_depot(entry, "Restart Station", "Restart System")
+
+    plugin.plugin_stop()
+
+    plugin.construction_sites.clear()
+    plugin.selected_site_id = None
+    plugin.dark_mode = False
+
+    result = plugin.plugin_start3(_test_tmpdir)
+    assert result == "Construction Tracker"
+
+    assert plugin.dark_mode is True
+    assert plugin.selected_site_id == 4444
+    assert 4444 in plugin.construction_sites
+    site = plugin.construction_sites[4444]
+    assert site["display_name"] == "Restart Station - Restart System"
+
+    print("[PASS] Data persists across plugin stop/start cycle")
+
+
+def test_dark_mode_preference_saved():
+    _reset_plugin()
+    plugin.dark_mode = False
+    plugin._toggle_dark_mode()
+    assert plugin.dark_mode is True
+
+    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
+    assert os.path.exists(save_path)
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["dark_mode"] is True
+
+    plugin._toggle_dark_mode()
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["dark_mode"] is False
+
+    print("[PASS] Dark mode preference is saved on toggle")
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -369,5 +493,8 @@ if __name__ == "__main__":
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
     test_dark_mode_toggle()
+    test_save_and_load_data()
+    test_persistence_across_restart()
+    test_dark_mode_preference_saved()
 
     print(f"\nAll tests passed!")
