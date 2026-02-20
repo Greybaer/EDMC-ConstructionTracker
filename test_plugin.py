@@ -68,7 +68,7 @@ def test_construction_depot_processing():
 
     assert 12345 in plugin.construction_sites
     site = plugin.construction_sites[12345]
-    assert site["display_name"] == "Test Station - Test System"
+    assert site["display_name"] == "Test Station"
     assert site["progress"] == 0.45
     assert len(site["materials"]) == 2
 
@@ -129,8 +129,8 @@ def test_multiple_sites():
     assert len(plugin.construction_sites) == 2
     assert 111 in plugin.construction_sites
     assert 222 in plugin.construction_sites
-    assert plugin.construction_sites[111]["display_name"] == "Alpha Station - Alpha System"
-    assert plugin.construction_sites[222]["display_name"] == "Beta Outpost - Beta System"
+    assert plugin.construction_sites[111]["display_name"] == "Alpha Station"
+    assert plugin.construction_sites[222]["display_name"] == "Beta Outpost"
     assert plugin.selected_site_id == 222
 
     print("[PASS] Multiple construction sites tracked correctly")
@@ -230,21 +230,27 @@ def test_contribution_updates():
     print("[PASS] ColonisationContribution updates ProvidedAmount and recalculates CompletionAmount")
 
 
-def test_cargo_json_loading():
+def test_fc_materials_loading():
     with tempfile.TemporaryDirectory() as tmpdir:
-        cargo_data = {
+        fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
-            "event": "Cargo",
-            "Vessel": "Ship",
-            "Count": 3,
-            "Inventory": [
-                {"Name": "aluminium", "Count": 120, "Stolen": 0},
-                {"Name": "steel", "Count": 80, "Stolen": 0},
-                {"Name": "polymers", "Count": 45, "Stolen": 0},
+            "event": "FCMaterials",
+            "MarketID": 3700005632,
+            "CarrierName": "TEST CARRIER",
+            "CarrierID": "T7T-TTT",
+            "Items": [
+                {"id": 1, "Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+                 "Stock": 120, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 2, "Name": "$steel_name;", "Name_Localised": "Steel",
+                 "Stock": 80, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 3, "Name": "$polymers_name;", "Name_Localised": "Polymers",
+                 "Stock": 45, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 4, "Name": "$gold_name;", "Name_Localised": "Gold",
+                 "Stock": 0, "Demand": 100, "BuyPrice": 0, "SellPrice": 0},
             ],
         }
-        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
-            json.dump(cargo_data, f)
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
 
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo.clear()
@@ -253,14 +259,15 @@ def test_cargo_json_loading():
         assert plugin.carrier_cargo.get("aluminium") == 120
         assert plugin.carrier_cargo.get("steel") == 80
         assert plugin.carrier_cargo.get("polymers") == 45
+        assert plugin.carrier_cargo.get("gold", 0) == 0
 
-    print("[PASS] Cargo.json loading works correctly")
+    print("[PASS] FCMaterials.json loading works correctly")
 
 
 def test_display_name_generation():
-    assert plugin._get_site_display_name("Station", "System", 1) == "Station - System"
+    assert plugin._get_site_display_name("Station", "System", 1) == "Station"
     assert plugin._get_site_display_name("Station", None, 1) == "Station"
-    assert plugin._get_site_display_name(None, "System", 1) == "System"
+    assert plugin._get_site_display_name(None, "System", 1) == "Site #1"
     assert plugin._get_site_display_name(None, None, 42) == "Site #42"
 
     print("[PASS] Display name generation")
@@ -288,25 +295,28 @@ def test_display_name_with_ext_panel():
         "ResourcesRequired": [],
     }
     plugin._process_construction_depot(entry, "$EXT_PANEL_ColDepot;", "Sol")
-    assert plugin.construction_sites[777]["display_name"] == "ColDepot - Sol"
+    assert plugin.construction_sites[777]["display_name"] == "ColDepot"
 
     print("[PASS] Display name trims $EXT_PANEL_ prefix from station name")
 
 
 def test_docked_event_loads_carrier_cargo():
     with tempfile.TemporaryDirectory() as tmpdir:
-        cargo_data = {
+        fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
-            "event": "Cargo",
-            "Vessel": "Ship",
-            "Count": 2,
-            "Inventory": [
-                {"Name": "aluminium", "Count": 200, "Stolen": 0},
-                {"Name": "steel", "Count": 150, "Stolen": 0},
+            "event": "FCMaterials",
+            "MarketID": 3700005632,
+            "CarrierName": "TEST CARRIER",
+            "CarrierID": "T7T-TTT",
+            "Items": [
+                {"id": 1, "Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+                 "Stock": 200, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 2, "Name": "$steel_name;", "Name_Localised": "Steel",
+                 "Stock": 150, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
             ],
         }
-        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
-            json.dump(cargo_data, f)
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
 
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo.clear()
@@ -354,17 +364,19 @@ def test_dark_mode_button_label():
 
 def test_journal_entry_cargo_event():
     with tempfile.TemporaryDirectory() as tmpdir:
-        cargo_data = {
+        fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
-            "event": "Cargo",
-            "Vessel": "Ship",
-            "Count": 1,
-            "Inventory": [
-                {"Name": "gold", "Count": 50, "Stolen": 0},
+            "event": "FCMaterials",
+            "MarketID": 3700005632,
+            "CarrierName": "TEST CARRIER",
+            "CarrierID": "T7T-TTT",
+            "Items": [
+                {"id": 1, "Name": "$gold_name;", "Name_Localised": "Gold",
+                 "Stock": 50, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
             ],
         }
-        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
-            json.dump(cargo_data, f)
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
 
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo.clear()
@@ -409,7 +421,7 @@ def test_save_and_load_data():
     assert saved["dark_mode"] is True
     assert saved["selected_site_id"] == 8888
     assert "8888" in saved["construction_sites"]
-    assert saved["construction_sites"]["8888"]["display_name"] == "Persist Station - Persist System"
+    assert saved["construction_sites"]["8888"]["display_name"] == "Persist Station"
 
     plugin.construction_sites.clear()
     plugin.selected_site_id = None
@@ -421,7 +433,7 @@ def test_save_and_load_data():
     assert plugin.selected_site_id == 8888
     assert 8888 in plugin.construction_sites
     site = plugin.construction_sites[8888]
-    assert site["display_name"] == "Persist Station - Persist System"
+    assert site["display_name"] == "Persist Station"
     assert site["progress"] == 0.6
     assert len(site["materials"]) == 1
     assert site["materials"][0]["name"] == "Aluminium"
@@ -467,7 +479,7 @@ def test_persistence_across_restart():
     assert plugin.selected_site_id == 4444
     assert 4444 in plugin.construction_sites
     site = plugin.construction_sites[4444]
-    assert site["display_name"] == "Restart Station - Restart System"
+    assert site["display_name"] == "Restart Station"
 
     print("[PASS] Data persists across plugin stop/start cycle")
 
@@ -504,7 +516,7 @@ if __name__ == "__main__":
     test_multiple_sites()
     test_carrier_cargo_update()
     test_contribution_updates()
-    test_cargo_json_loading()
+    test_fc_materials_loading()
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
     test_dark_mode_toggle()

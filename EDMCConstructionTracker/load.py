@@ -42,11 +42,13 @@ DARK_BG = "#1e1e1e"
 DARK_FG = "#d4d4d4"
 DARK_HEADER_FG = "#ffffff"
 DARK_GREEN = "#4ec94e"
+DARK_ORANGE = "#ff8c00"
 DARK_STATUS_FG = "#888888"
 DARK_BTN_BG = "#333333"
 LIGHT_BG = "SystemButtonFace"
 LIGHT_FG = "black"
 LIGHT_GREEN = "green"
+LIGHT_ORANGE = "#e67300"
 LIGHT_STATUS_FG = "gray"
 
 SAVE_FILE = "construction_tracker_data.json"
@@ -170,13 +172,8 @@ def _clean_station_name(name: str) -> str:
 
 
 def _get_site_display_name(station: Optional[str], system: Optional[str], market_id: int) -> str:
-    parts = []
     if station:
-        parts.append(_clean_station_name(station))
-    if system:
-        parts.append(system)
-    if parts:
-        return " - ".join(parts)
+        return _clean_station_name(station)
     return f"Site #{market_id}"
 
 
@@ -185,24 +182,25 @@ def _load_carrier_cargo() -> None:
     if not journal_dir:
         return
 
-    cargo_path = os.path.join(journal_dir, "Cargo.json")
-    if not os.path.exists(cargo_path):
+    fc_path = os.path.join(journal_dir, "FCMaterials.json")
+    if not os.path.exists(fc_path):
         return
 
     try:
-        with open(cargo_path, "r") as f:
+        with open(fc_path, "r") as f:
             data = json.load(f)
 
-        cargo_items = data.get("Inventory", [])
+        items = data.get("Items", [])
         carrier_cargo.clear()
-        for item in cargo_items:
-            name = item.get("Name", "").lower()
-            count = item.get("Count", 0)
-            if name:
-                carrier_cargo[name] = count
-        logger.debug(f"Loaded carrier cargo: {len(carrier_cargo)} items")
+        for item in items:
+            raw_name = item.get("Name", "")
+            name_key = raw_name.replace("$", "").replace("_name;", "").lower()
+            stock = item.get("Stock", 0)
+            if name_key and stock > 0:
+                carrier_cargo[name_key] = stock
+        logger.debug(f"Loaded FC cargo: {len(carrier_cargo)} items from FCMaterials.json")
     except Exception as e:
-        logger.error(f"Error loading Cargo.json: {e}")
+        logger.error(f"Error loading FCMaterials.json: {e}")
 
 
 def _calculate_completion(required: int, provided: int, carrier: int) -> int:
@@ -384,6 +382,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     bg = DARK_BG if dark_mode else LIGHT_BG
     fg = DARK_FG if dark_mode else LIGHT_FG
     green = DARK_GREEN if dark_mode else LIGHT_GREEN
+    orange = DARK_ORANGE if dark_mode else LIGHT_ORANGE
     material_frame.config(bg=bg)
 
     headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
@@ -396,7 +395,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     sep.grid(row=1, column=0, columnspan=len(headers), sticky=tk.EW, pady=2)
 
     for row_idx, mat in enumerate(materials, start=2):
-        fg_color = green if mat["completion"] == 0 else fg
+        fg_color = green if mat["completion"] == 0 else orange
 
         name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),
                             fg=fg_color, bg=bg, anchor=tk.W)
