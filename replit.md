@@ -28,7 +28,7 @@ The plugin follows EDMC's plugin contract:
 - **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
 
 ### Fleet Carrier Cargo Sources (in priority order)
-1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Parses `cargo.items[]` for cargo hold and `orders.commodities.sales` for items listed for sale. Has a 15-minute cooldown between queries.
+1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Parses `cargo.commodities[]` for cargo hold and `orders.commodities.sales` for items listed for sale. Has a 15-minute cooldown between queries.
 2. **FCMaterials.json** (fallback): Read from the Elite Dangerous journal directory. Updated when the player opens their carrier's commodity market interface. Uses `Stock` field from `Items[]`. Triggered on Docked, Cargo, CargoTransfer, Market, Location, and CarrierJump journal events.
 
 ### Name Normalization

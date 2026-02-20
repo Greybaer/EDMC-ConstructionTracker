@@ -430,7 +430,7 @@ def test_capi_fleetcarrier_cargo_items():
         "cargo": {
             "capacity": 25000,
             "qty": 350,
-            "items": [
+            "commodities": [
                 {"id": 1, "name": "Aluminium", "locName": "Aluminium", "qty": 200, "value": 340, "stolen": 0, "mission": 0},
                 {"id": 2, "name": "Steel", "locName": "Steel", "qty": 150, "value": 280, "stolen": 0, "mission": 0},
             ],
@@ -457,7 +457,7 @@ def test_capi_fleetcarrier_sales_orders():
     _reset_plugin()
 
     capi_data = {
-        "cargo": {"capacity": 25000, "qty": 0, "items": []},
+        "cargo": {"capacity": 25000, "qty": 0, "commodities": []},
         "orders": {
             "commodities": {
                 "sales": {
@@ -484,7 +484,7 @@ def test_capi_fleetcarrier_empty_data():
     assert plugin.carrier_cargo.get("old_item") == 100
 
     capi_data = {
-        "cargo": {"capacity": 25000, "qty": 0, "items": []},
+        "cargo": {"capacity": 25000, "qty": 0, "commodities": []},
         "orders": {"commodities": {"sales": {}, "purchases": {}}},
     }
     plugin.capi_fleetcarrier(capi_data)
