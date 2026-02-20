@@ -1,50 +1,68 @@
 # EDMC Construction Tracker Plugin
 
 ## Overview
-An Elite Dangerous Market Connector (EDMC) plugin that tracks construction site material requirements for the System Colonisation feature. It monitors journal events when docking at construction depots, tracks Fleet Carrier cargo, and displays material progress in a tkinter UI within EDMC.
 
-## Project Structure
-```
-EDMCConstructionTracker/
-  load.py                              - Main plugin file (EDMC entry point)
-  construction_tracker_data.json       - Persistent data file (auto-generated)
-test_plugin.py                         - Unit tests for plugin logic
-```
+This is an Elite Dangerous Market Connector (EDMC) plugin that tracks construction site material requirements for the System Colonisation feature in Elite Dangerous. When a player docks at a construction depot, the plugin monitors journal events to display material requirements, track deliveries, and show completion progress. It supports tracking multiple construction sites, reading Fleet Carrier cargo data, and provides a dark/light mode UI.
 
-## Key Features
-- Tracks multiple construction sites via dropdown selector (station name only, no system)
-- Monitors ColonisationConstructionDepot and ColonisationContribution journal events
-- Reads Fleet Carrier cargo from FCMaterials.json (Stock field) for CarrierAmount
-- Calculates CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)
-- Displays material table with Required, Provided, Carrier, Remaining columns
-- Incomplete materials shown in orange; completed materials shown in green
-- Updates in real-time as materials are delivered
-- Trims $EXT_PANEL_ prefix and trailing semicolons from station names
-- Reloads carrier cargo on Docked, Cargo, and CargoTransfer events
-- Dark/Light mode toggle with full widget theming (header, labels, button, material table, combobox)
-- Persistent data storage across EDMC restarts (construction sites, selected site, dark mode preference)
+## User Preferences
 
-## Architecture
-- **Plugin API**: Uses EDMC plugin_start3, plugin_stop, plugin_app, journal_entry hooks
-- **Data Storage**: In-memory dictionary keyed by MarketID, persisted to JSON file in plugin directory
-- **Persistence**: construction_tracker_data.json stores construction sites, selected site ID, and dark mode preference; loaded on startup, saved on every state change
-- **UI**: tkinter with tk.OptionMenu for site selection (fully themeable), grid-based material table, dark/light mode toggle
-- **Carrier Tracking**: Reads FCMaterials.json from Elite Dangerous journal directory; uses Items[].Name (cleaned to match resource keys) and Items[].Stock for carrier amounts
-- **Journal Directory**: Obtained from EDMC config module (config.get_str('journaldir') or config.default_journal_dir); loaded at plugin startup and as fallback during journal events
-- **Station Name Parsing**: Parses $EXT_PANEL_SiteType;SiteName - SystemName; format into three variables (site_type, site_name, system_name) by splitting on semicolons and hyphens
-- **Material Colors**: Green for fulfilled (completion=0), orange for incomplete (completion>0)
+Preferred communication style: Simple, everyday language.
 
-## Recent Changes
-- 2026-02-20: Replaced ttk.Combobox with tk.OptionMenu for full dark/light mode dropdown theming
-- 2026-02-20: Added station name parsing: splits $EXT_PANEL_ format into Site Type, Site, and System
-- 2026-02-20: Fixed journal directory detection using EDMC config module for carrier cargo loading
-- 2026-02-20: Fixed carrier cargo to read from FCMaterials.json instead of Cargo.json
-- 2026-02-20: Changed incomplete material text color to orange
-- 2026-02-20: Removed system name from dropdown - shows station name only
-- 2026-02-20: Fixed dark/light mode button label to show current mode
-- 2026-02-20: Added full widget theming - all UI elements follow dark/light mode
-- 2026-02-20: Added persistent data storage across EDMC restarts
-- 2026-02-20: Initial plugin creation with full MVP feature set
+## System Architecture
 
-## Testing
-Run `python test_plugin.py` to execute all unit tests (17 tests covering core logic, event handling, FCMaterials loading, name trimming, docked event, dark mode, button labels, persistence save/load, and restart persistence).
+### Plugin Structure
+- **Entry Point**: `EDMCConstructionTracker/load.py` is the main plugin file that EDMC loads. It implements the standard EDMC plugin hooks: `plugin_start3`, `plugin_stop`, `plugin_app`, and `journal_entry`.
+- **Tests**: `test_plugin.py` contains unit tests that import directly from the plugin's `load.py` module.
+
+### EDMC Plugin API
+The plugin follows EDMC's plugin contract:
+- `plugin_start3(plugin_dir)` — Initializes the plugin, loads persisted data, returns the plugin name
+- `plugin_stop()` — Cleanup on shutdown
+- `plugin_app(parent)` — Builds and returns the tkinter UI frame
+- `journal_entry(cmdr, is_beta, system, station, entry, state)` — Processes game journal events in real-time
+
+### Data Model
+- **Construction Sites**: Stored in an in-memory dictionary keyed by `MarketID` (integer). Each site contains construction progress, resource requirements (required, provided, carrier amounts), station metadata, and parsed station name components.
+- **Carrier Cargo**: A dictionary mapping resource names (lowercase, cleaned) to quantities, read from the game's `FCMaterials.json` file (using the `Stock` field).
+- **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
+
+### Data Persistence
+- **File**: `construction_tracker_data.json` stored in the plugin directory
+- **Contents**: Construction sites, selected site ID, and dark mode preference
+- **Strategy**: Loaded on startup, saved on every state change. This ensures data survives EDMC restarts.
+
+### UI Architecture
+- Built with **tkinter** (not ttk for key widgets, to enable full theming)
+- `tk.OptionMenu` for site selection dropdown (replaced ttk.Combobox for better dark/light mode support)
+- Grid-based material table showing Required, Provided, Carrier, and Remaining columns
+- Color coding: green for completed materials (remaining = 0), orange for incomplete materials
+- Dark/light mode toggle button that themes all widgets including headers, labels, buttons, material table, and combobox
+
+### Station Name Parsing
+Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` and are parsed into three variables: `site_type`, `site_name`, and `system_name`. The `$EXT_PANEL_` prefix and trailing semicolons are trimmed.
+
+### Journal Events Handled
+- `ColonisationConstructionDepot` — Updates construction site data with full material requirements
+- `ColonisationContribution` — Updates material delivery counts in real-time
+- `Docked`, `Cargo`, `CargoTransfer`, `Market`, `Location`, `CarrierJump` — Triggers reload of Fleet Carrier cargo from `FCMaterials.json`
+
+### Completion Calculation
+`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material is still needed.
+
+### Journal Directory Detection
+Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.
+
+## External Dependencies
+
+### Runtime Dependencies
+- **EDMC (Elite Dangerous Market Connector)** — The host application that loads this plugin. Provides the plugin API hooks, config module for journal directory, and the parent tkinter window.
+- **tkinter** — Python's built-in GUI toolkit, used for all UI rendering. No additional UI libraries needed.
+- **Elite Dangerous Journal Files** — The plugin reads game journal events passed through EDMC and directly reads `FCMaterials.json` from the journal directory for Fleet Carrier cargo data.
+
+### No External Packages
+The plugin uses only Python standard library modules (`json`, `os`, `logging`, `typing`, `tkinter`). There are no pip dependencies or package manager requirements. The plugin runs entirely within the EDMC process.
+
+### Testing
+- Tests use Python's built-in `unittest.mock` and `tempfile` modules
+- Tests import the plugin module directly and reset state between test cases
+- No test framework beyond the standard library is required
