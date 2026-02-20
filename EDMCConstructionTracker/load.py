@@ -1,9 +1,10 @@
+
 from __future__ import annotations
 
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import tkinter as tk
@@ -15,7 +16,7 @@ except ImportError:
     ttk = None
 
 plugin_name = "Construction Tracker"
-plugin_version = "1.1.0"
+plugin_version = "1.2.0"
 
 logger = logging.getLogger(f"{plugin_name}")
 
@@ -45,11 +46,13 @@ DARK_GREEN = "#4ec94e"
 DARK_ORANGE = "#ff8c00"
 DARK_STATUS_FG = "#888888"
 DARK_BTN_BG = "#333333"
+DARK_MENU_ACTIVE = "#3a3a3a"
 LIGHT_BG = "SystemButtonFace"
 LIGHT_FG = "black"
 LIGHT_GREEN = "green"
 LIGHT_ORANGE = "#e67300"
 LIGHT_STATUS_FG = "gray"
+LIGHT_MENU_ACTIVE = "#e0e0e0"
 
 SAVE_FILE = "construction_tracker_data.json"
 
@@ -96,10 +99,26 @@ def _load_data() -> None:
         logger.error(f"Error loading data: {e}")
 
 
+def _init_journal_dir() -> None:
+    global journal_dir
+    if journal_dir:
+        return
+    try:
+        import config as edmc_config
+        journal_dir = edmc_config.get_str('journaldir') or edmc_config.default_journal_dir
+        if journal_dir:
+            logger.info(f"Journal directory from EDMC config: {journal_dir}")
+    except Exception:
+        pass
+
+
 def plugin_start3(plugin_dir_path: str) -> str:
     global plugin_dir
     plugin_dir = plugin_dir_path
     _load_data()
+    _init_journal_dir()
+    if journal_dir:
+        _load_carrier_cargo()
     logger.info(f"{plugin_name} v{plugin_version} started")
     return plugin_name
 
@@ -125,9 +144,10 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     site_label = tk.Label(frame, text="Site:")
     site_label.grid(row=1, column=0, sticky=tk.W)
     site_var = tk.StringVar(value="No sites tracked")
-    site_selector = ttk.Combobox(frame, textvariable=site_var, state="readonly", width=35)
+    site_selector = tk.OptionMenu(frame, site_var, "No sites tracked")
+    site_selector.config(width=30, anchor=tk.W)
     site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
-    site_selector.bind("<<ComboboxSelected>>", _on_site_selected)
+    site_var.trace_add("write", _on_site_var_changed)
 
     progress_var = tk.StringVar(value="Progress: --")
     progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
@@ -149,7 +169,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     return frame
 
 
-def _on_site_selected(event=None) -> None:
+def _on_site_var_changed(*args) -> None:
     global selected_site_id
     if not site_var or not construction_sites:
         return
@@ -157,23 +177,48 @@ def _on_site_selected(event=None) -> None:
     selected_name = site_var.get()
     for mid, site_data in construction_sites.items():
         if site_data["display_name"] == selected_name:
-            selected_site_id = mid
-            _update_display()
-            _save_data()
+            if selected_site_id != mid:
+                selected_site_id = mid
+                _update_display()
+                _save_data()
             return
 
 
-def _clean_station_name(name: str) -> str:
+def _parse_station_name(name: str) -> Tuple[str, str, str]:
+    site_type = ""
+    site_name = ""
+    system_name = ""
+
     if name.startswith("$EXT_PANEL_"):
         name = name[len("$EXT_PANEL_"):]
-    if name.endswith(";"):
-        name = name[:-1]
-    return name
+
+    segments = [s.strip() for s in name.split(";") if s.strip()]
+
+    if len(segments) >= 2:
+        site_type = segments[0]
+        remainder = segments[1]
+    elif len(segments) == 1:
+        remainder = segments[0]
+    else:
+        return site_type, site_name, system_name
+
+    if " - " in remainder:
+        site_parts = remainder.rsplit(" - ", 1)
+        site_name = site_parts[0].strip()
+        system_name = site_parts[1].strip()
+    else:
+        site_name = remainder
+
+    return site_type, site_name, system_name
 
 
 def _get_site_display_name(station: Optional[str], system: Optional[str], market_id: int) -> str:
     if station:
-        return _clean_station_name(station)
+        site_type, site_name, parsed_system = _parse_station_name(station)
+        if site_name:
+            return site_name
+        if site_type:
+            return site_type
     return f"Site #{market_id}"
 
 
@@ -184,6 +229,7 @@ def _load_carrier_cargo() -> None:
 
     fc_path = os.path.join(journal_dir, "FCMaterials.json")
     if not os.path.exists(fc_path):
+        logger.debug(f"FCMaterials.json not found at {fc_path}")
         return
 
     try:
@@ -198,7 +244,7 @@ def _load_carrier_cargo() -> None:
             stock = item.get("Stock", 0)
             if name_key and stock > 0:
                 carrier_cargo[name_key] = stock
-        logger.debug(f"Loaded FC cargo: {len(carrier_cargo)} items from FCMaterials.json")
+        logger.info(f"Loaded FC cargo: {len(carrier_cargo)} items from FCMaterials.json")
     except Exception as e:
         logger.error(f"Error loading FCMaterials.json: {e}")
 
@@ -221,6 +267,8 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
     resources = entry.get("ResourcesRequired", [])
 
     display_name = _get_site_display_name(station, system, market_id)
+
+    site_type, site_name, parsed_system = _parse_station_name(station or "")
 
     materials: List[Dict[str, Any]] = []
     for res in resources:
@@ -250,6 +298,9 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
         "materials": materials,
         "station": station,
         "system": system,
+        "site_type": site_type,
+        "site_name": site_name,
+        "parsed_system": parsed_system,
     }
 
     selected_site_id = market_id
@@ -273,12 +324,18 @@ def _update_site_selector() -> None:
         return
 
     names = [site["display_name"] for site in construction_sites.values()]
-    site_selector["values"] = names
+
+    menu = site_selector["menu"]
+    menu.delete(0, "end")
+    for name in names:
+        menu.add_command(label=name, command=lambda n=name: site_var.set(n))
 
     if selected_site_id and selected_site_id in construction_sites:
         site_var.set(construction_sites[selected_site_id]["display_name"])
     elif names:
         site_var.set(names[0])
+
+    _apply_dropdown_theme()
 
 
 def _update_display() -> None:
@@ -326,6 +383,24 @@ def _toggle_dark_mode() -> None:
     _save_data()
 
 
+def _apply_dropdown_theme() -> None:
+    if not site_selector:
+        return
+
+    bg = DARK_BG if dark_mode else LIGHT_BG
+    fg = DARK_FG if dark_mode else LIGHT_FG
+    active_bg = DARK_MENU_ACTIVE if dark_mode else LIGHT_MENU_ACTIVE
+
+    try:
+        site_selector.config(bg=bg, fg=fg, activebackground=active_bg,
+                             activeforeground=fg, highlightthickness=0,
+                             relief=tk.FLAT if dark_mode else tk.RAISED)
+        menu = site_selector["menu"]
+        menu.config(bg=bg, fg=fg, activebackground=active_bg, activeforeground=fg)
+    except Exception:
+        pass
+
+
 def _apply_theme() -> None:
     if not frame:
         return
@@ -356,21 +431,7 @@ def _apply_theme() -> None:
     if material_frame:
         material_frame.config(bg=bg)
 
-    if site_selector and HAS_TK:
-        try:
-            style = ttk.Style()
-            style.map("TCombobox",
-                      fieldbackground=[("readonly", bg)],
-                      foreground=[("readonly", fg)],
-                      selectbackground=[("readonly", bg)],
-                      selectforeground=[("readonly", fg)])
-            style.configure("TCombobox",
-                            fieldbackground=bg,
-                            background=bg,
-                            foreground=fg)
-            site_selector.config(style="TCombobox")
-        except Exception:
-            pass
+    _apply_dropdown_theme()
 
 
 def _render_materials(materials: List[Dict[str, Any]]) -> None:
@@ -429,7 +490,11 @@ def journal_entry(
     global journal_dir
 
     if journal_dir is None:
-        journal_dir = state.get("JournalDir")
+        jdir = state.get("JournalDir")
+        if jdir:
+            journal_dir = jdir
+        else:
+            _init_journal_dir()
 
     event_name = entry.get("event", "")
 

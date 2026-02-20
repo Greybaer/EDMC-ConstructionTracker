@@ -273,14 +273,33 @@ def test_display_name_generation():
     print("[PASS] Display name generation")
 
 
-def test_clean_station_name():
-    assert plugin._clean_station_name("$EXT_PANEL_ColDepot;") == "ColDepot"
-    assert plugin._clean_station_name("$EXT_PANEL_MyStation;") == "MyStation"
-    assert plugin._clean_station_name("$EXT_PANEL_Test") == "Test"
-    assert plugin._clean_station_name("Normal Station") == "Normal Station"
-    assert plugin._clean_station_name("$EXT_PANEL_") == ""
+def test_parse_station_name():
+    site_type, site_name, system_name = plugin._parse_station_name("$EXT_PANEL_ColDepot;My Station - Sol;")
+    assert site_type == "ColDepot", f"Expected 'ColDepot', got '{site_type}'"
+    assert site_name == "My Station", f"Expected 'My Station', got '{site_name}'"
+    assert system_name == "Sol", f"Expected 'Sol', got '{system_name}'"
 
-    print("[PASS] Station name $EXT_PANEL_ trimming")
+    site_type, site_name, system_name = plugin._parse_station_name("$EXT_PANEL_Hub;Alpha Base - Barnard's Star;")
+    assert site_type == "Hub"
+    assert site_name == "Alpha Base"
+    assert system_name == "Barnard's Star"
+
+    site_type, site_name, system_name = plugin._parse_station_name("Normal Station")
+    assert site_type == ""
+    assert site_name == "Normal Station"
+    assert system_name == ""
+
+    site_type, site_name, system_name = plugin._parse_station_name("$EXT_PANEL_ColDepot;")
+    assert site_type == ""
+    assert site_name == "ColDepot"
+    assert system_name == ""
+
+    site_type, site_name, system_name = plugin._parse_station_name("$EXT_PANEL_Outpost;My Outpost - Alpha Centauri;")
+    assert site_type == "Outpost"
+    assert site_name == "My Outpost"
+    assert system_name == "Alpha Centauri"
+
+    print("[PASS] Station name parsing into site type, site, and system")
 
 
 def test_display_name_with_ext_panel():
@@ -294,10 +313,13 @@ def test_display_name_with_ext_panel():
         "ConstructionFailed": False,
         "ResourcesRequired": [],
     }
-    plugin._process_construction_depot(entry, "$EXT_PANEL_ColDepot;", "Sol")
-    assert plugin.construction_sites[777]["display_name"] == "ColDepot"
+    plugin._process_construction_depot(entry, "$EXT_PANEL_ColDepot;My Station - Sol;", "Sol")
+    assert plugin.construction_sites[777]["display_name"] == "My Station"
+    assert plugin.construction_sites[777]["site_type"] == "ColDepot"
+    assert plugin.construction_sites[777]["site_name"] == "My Station"
+    assert plugin.construction_sites[777]["parsed_system"] == "Sol"
 
-    print("[PASS] Display name trims $EXT_PANEL_ prefix from station name")
+    print("[PASS] Display name extracts site name from $EXT_PANEL_ format")
 
 
 def test_docked_event_loads_carrier_cargo():
@@ -510,7 +532,7 @@ if __name__ == "__main__":
     test_plugin_start()
     test_completion_amount_calculation()
     test_display_name_generation()
-    test_clean_station_name()
+    test_parse_station_name()
     test_display_name_with_ext_panel()
     test_construction_depot_processing()
     test_multiple_sites()
