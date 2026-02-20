@@ -450,7 +450,27 @@ def test_capi_fleetcarrier_cargo_items():
     assert mat_steel["carrier"] == 150
     assert mat_steel["completion"] == 100
 
-    print("[PASS] CAPI fleetcarrier cargo items populate carrier amounts")
+    print("[PASS] CAPI fleetcarrier cargo commodities populate carrier amounts")
+
+
+def test_capi_fleetcarrier_cargo_items_fallback():
+    _reset_plugin()
+
+    capi_data = {
+        "cargo": {
+            "capacity": 25000,
+            "qty": 200,
+            "items": [
+                {"id": 1, "name": "Aluminium", "locName": "Aluminium", "qty": 200, "value": 340, "stolen": 0, "mission": 0},
+            ],
+        },
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 200
+
+    print("[PASS] CAPI fleetcarrier cargo items fallback works")
 
 
 def test_capi_fleetcarrier_sales_orders():
@@ -679,6 +699,7 @@ if __name__ == "__main__":
     test_docked_event_loads_carrier_cargo()
     test_market_event_loads_carrier_cargo()
     test_capi_fleetcarrier_cargo_items()
+    test_capi_fleetcarrier_cargo_items_fallback()
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_empty_data()
     test_dark_mode_toggle()

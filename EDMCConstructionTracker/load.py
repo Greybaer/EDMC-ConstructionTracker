@@ -590,8 +590,8 @@ def _process_capi_carrier_cargo(data) -> None:
 
     cargo_section = data.get("cargo", {})
     if isinstance(cargo_section, dict):
-        commodities = cargo_section.get("commodities", [])
-        for item in commodities:
+        cargo_list = cargo_section.get("commodities", []) or cargo_section.get("items", [])
+        for item in cargo_list:
             name_key = _normalize_name(item.get("name", ""))
             qty = item.get("qty", 0)
             if name_key and qty > 0:
