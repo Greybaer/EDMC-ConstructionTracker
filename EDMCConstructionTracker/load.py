@@ -16,7 +16,7 @@ except ImportError:
     ttk = None
 
 plugin_name = "Construction Tracker"
-plugin_version = "1.2.0"
+plugin_version = "1.3.0"
 
 logger = logging.getLogger(f"{plugin_name}")
 
@@ -569,3 +569,44 @@ def journal_entry(
             _save_data()
             if market_id == selected_site_id:
                 _update_display()
+
+
+def capi_fleetcarrier(data) -> None:
+    if not data:
+        return
+
+    _process_capi_carrier_cargo(data)
+    _update_carrier_amounts()
+    _save_data()
+    if selected_site_id:
+        _update_display()
+    logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items")
+
+
+def _process_capi_carrier_cargo(data) -> None:
+    global carrier_cargo
+
+    carrier_cargo.clear()
+
+    cargo_section = data.get("cargo", {})
+    if isinstance(cargo_section, dict):
+        cargo_items = cargo_section.get("items", [])
+        for item in cargo_items:
+            name_key = _normalize_name(item.get("name", ""))
+            qty = item.get("qty", 0)
+            if name_key and qty > 0:
+                carrier_cargo[name_key] = qty
+
+    orders = data.get("orders", {})
+    commodity_orders = orders.get("commodities", {})
+    if isinstance(commodity_orders, dict):
+        sales = commodity_orders.get("sales", {})
+        if isinstance(sales, dict):
+            sales = sales.values()
+        for item in sales:
+            name_key = _normalize_name(item.get("name", ""))
+            outstanding = item.get("outstanding", 0)
+            if name_key and outstanding > 0 and name_key not in carrier_cargo:
+                carrier_cargo[name_key] = outstanding
+
+    logger.debug(f"CAPI carrier cargo parsed: {carrier_cargo}")

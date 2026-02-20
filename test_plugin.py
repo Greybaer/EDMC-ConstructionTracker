@@ -397,6 +397,102 @@ def test_market_event_loads_carrier_cargo():
     print("[PASS] Market event triggers carrier cargo reload")
 
 
+def test_capi_fleetcarrier_cargo_items():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 50}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 6000,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 500,
+                "ProvidedAmount": 100,
+                "Payment": 1000,
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 300,
+                "ProvidedAmount": 50,
+                "Payment": 500,
+            },
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Test Station", "Test System")
+
+    capi_data = {
+        "cargo": {
+            "capacity": 25000,
+            "qty": 350,
+            "items": [
+                {"id": 1, "name": "Aluminium", "locName": "Aluminium", "qty": 200, "value": 340, "stolen": 0, "mission": 0},
+                {"id": 2, "name": "Steel", "locName": "Steel", "qty": 150, "value": 280, "stolen": 0, "mission": 0},
+            ],
+        },
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 200
+    assert plugin.carrier_cargo.get("steel") == 150
+
+    mat_alum = plugin.construction_sites[6000]["materials"][0]
+    assert mat_alum["carrier"] == 200
+    assert mat_alum["completion"] == 200
+
+    mat_steel = plugin.construction_sites[6000]["materials"][1]
+    assert mat_steel["carrier"] == 150
+    assert mat_steel["completion"] == 100
+
+    print("[PASS] CAPI fleetcarrier cargo items populate carrier amounts")
+
+
+def test_capi_fleetcarrier_sales_orders():
+    _reset_plugin()
+
+    capi_data = {
+        "cargo": {"capacity": 25000, "qty": 0, "items": []},
+        "orders": {
+            "commodities": {
+                "sales": {
+                    "100": {"id": 128049204, "name": "Gold", "outstanding": 500, "price": 9500, "total": 1000, "blackMarket": False},
+                    "101": {"id": 128049168, "name": "Aluminium", "outstanding": 300, "price": 340, "total": 500, "blackMarket": False},
+                },
+                "purchases": {},
+            }
+        },
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("gold") == 500
+    assert plugin.carrier_cargo.get("aluminium") == 300
+
+    print("[PASS] CAPI fleetcarrier sales orders populate carrier amounts")
+
+
+def test_capi_fleetcarrier_empty_data():
+    _reset_plugin()
+    plugin.carrier_cargo = {"old_item": 100}
+
+    plugin.capi_fleetcarrier(None)
+    assert plugin.carrier_cargo.get("old_item") == 100
+
+    capi_data = {
+        "cargo": {"capacity": 25000, "qty": 0, "items": []},
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+    assert len(plugin.carrier_cargo) == 0
+
+    print("[PASS] CAPI fleetcarrier handles empty/null data")
+
+
 def test_dark_mode_toggle():
     _reset_plugin()
     plugin.dark_mode = False
@@ -582,6 +678,9 @@ if __name__ == "__main__":
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
     test_market_event_loads_carrier_cargo()
+    test_capi_fleetcarrier_cargo_items()
+    test_capi_fleetcarrier_sales_orders()
+    test_capi_fleetcarrier_empty_data()
     test_dark_mode_toggle()
     test_dark_mode_button_label()
     test_save_and_load_data()
