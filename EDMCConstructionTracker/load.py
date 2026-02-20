@@ -23,6 +23,7 @@ carrier_cargo: Dict[str, int] = {}
 construction_sites: Dict[int, Dict[str, Any]] = {}
 selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
+dark_mode: bool = False
 
 frame = None
 site_selector = None
@@ -30,6 +31,17 @@ site_var = None
 progress_var = None
 material_frame = None
 status_var = None
+dark_mode_btn = None
+
+DARK_BG = "#1e1e1e"
+DARK_FG = "#d4d4d4"
+DARK_HEADER_FG = "#ffffff"
+DARK_GREEN = "#4ec94e"
+DARK_STATUS_FG = "#888888"
+LIGHT_BG = "SystemButtonFace"
+LIGHT_FG = "black"
+LIGHT_GREEN = "green"
+LIGHT_STATUS_FG = "gray"
 
 
 def plugin_start3(plugin_dir: str) -> str:
@@ -42,29 +54,32 @@ def plugin_stop() -> None:
 
 
 def plugin_app(parent: tk.Frame) -> tk.Frame:
-    global frame, site_selector, site_var, progress_var, material_frame, status_var
+    global frame, site_selector, site_var, progress_var, material_frame, status_var, dark_mode_btn
 
     frame = tk.Frame(parent)
 
     header = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
-    header.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    header.grid(row=0, column=0, columnspan=1, sticky=tk.W, pady=(0, 4))
+
+    dark_mode_btn = tk.Button(frame, text="Dark", font=("Helvetica", 7), command=_toggle_dark_mode, width=4)
+    dark_mode_btn.grid(row=0, column=2, sticky=tk.E, pady=(0, 4), padx=(4, 0))
 
     tk.Label(frame, text="Site:").grid(row=1, column=0, sticky=tk.W)
     site_var = tk.StringVar(value="No sites tracked")
     site_selector = ttk.Combobox(frame, textvariable=site_var, state="readonly", width=35)
-    site_selector.grid(row=1, column=1, sticky=tk.W, padx=(4, 0))
+    site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
     site_selector.bind("<<ComboboxSelected>>", _on_site_selected)
 
     progress_var = tk.StringVar(value="Progress: --")
     progress_label = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
-    progress_label.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(4, 2))
+    progress_label.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
     status_label = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8), fg="gray")
-    status_label.grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+    status_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
     material_frame = tk.Frame(frame)
-    material_frame.grid(row=4, column=0, columnspan=2, sticky=tk.W)
+    material_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W)
 
     return frame
 
@@ -82,10 +97,18 @@ def _on_site_selected(event=None) -> None:
             return
 
 
+def _clean_station_name(name: str) -> str:
+    if name.startswith("$EXT_PANEL_"):
+        name = name[len("$EXT_PANEL_"):]
+    if name.endswith(";"):
+        name = name[:-1]
+    return name
+
+
 def _get_site_display_name(station: Optional[str], system: Optional[str], market_id: int) -> str:
     parts = []
     if station:
-        parts.append(station)
+        parts.append(_clean_station_name(station))
     if system:
         parts.append(system)
     if parts:
@@ -230,36 +253,102 @@ def _clear_material_display() -> None:
         widget.destroy()
 
 
+def _toggle_dark_mode() -> None:
+    global dark_mode
+    dark_mode = not dark_mode
+    if dark_mode_btn:
+        dark_mode_btn.config(text="Light" if dark_mode else "Dark")
+    _apply_theme()
+    _update_display()
+
+
+def _apply_theme() -> None:
+    if not frame:
+        return
+
+    bg = DARK_BG if dark_mode else LIGHT_BG
+    fg = DARK_FG if dark_mode else LIGHT_FG
+    header_fg = DARK_HEADER_FG if dark_mode else LIGHT_FG
+    status_fg = DARK_STATUS_FG if dark_mode else LIGHT_STATUS_FG
+
+    frame.config(bg=bg)
+    if material_frame:
+        material_frame.config(bg=bg)
+
+    for widget in frame.winfo_children():
+        widget_class = widget.winfo_class()
+        if widget_class == "Label":
+            widget.config(bg=bg)
+            current_text = widget.cget("text")
+            if current_text == "Construction Tracker":
+                widget.config(fg=header_fg)
+            elif widget == _get_status_label():
+                widget.config(fg=status_fg)
+            else:
+                widget.config(fg=fg)
+        elif widget_class == "Button":
+            widget.config(bg=bg, fg=fg)
+        elif widget_class == "Frame":
+            widget.config(bg=bg)
+
+    if dark_mode_btn:
+        dark_mode_btn.config(bg=bg, fg=fg)
+
+
+def _get_status_label() -> Optional[Any]:
+    if not frame:
+        return None
+    for widget in frame.winfo_children():
+        if widget.winfo_class() == "Label" and status_var:
+            try:
+                if widget.cget("textvariable") and str(widget.cget("textvariable")) == str(status_var):
+                    return widget
+            except Exception:
+                pass
+    return None
+
+
 def _render_materials(materials: List[Dict[str, Any]]) -> None:
     if not material_frame:
         return
 
     _clear_material_display()
 
+    bg = DARK_BG if dark_mode else LIGHT_BG
+    fg = DARK_FG if dark_mode else LIGHT_FG
+    green = DARK_GREEN if dark_mode else LIGHT_GREEN
+    material_frame.config(bg=bg)
+
     headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
     for col, header_text in enumerate(headers):
-        lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"), anchor=tk.W)
+        lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
+                       anchor=tk.W, bg=bg, fg=fg)
         lbl.grid(row=0, column=col, sticky=tk.W, padx=(0, 8))
 
     sep = ttk.Separator(material_frame, orient=tk.HORIZONTAL)
     sep.grid(row=1, column=0, columnspan=len(headers), sticky=tk.EW, pady=2)
 
     for row_idx, mat in enumerate(materials, start=2):
-        fg_color = "green" if mat["completion"] == 0 else "black"
+        fg_color = green if mat["completion"] == 0 else fg
 
-        name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8), fg=fg_color, anchor=tk.W)
+        name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),
+                            fg=fg_color, bg=bg, anchor=tk.W)
         name_lbl.grid(row=row_idx, column=0, sticky=tk.W, padx=(0, 8))
 
-        req_lbl = tk.Label(material_frame, text=str(mat["required"]), font=("Helvetica", 8), fg=fg_color, anchor=tk.E)
+        req_lbl = tk.Label(material_frame, text=str(mat["required"]), font=("Helvetica", 8),
+                           fg=fg_color, bg=bg, anchor=tk.E)
         req_lbl.grid(row=row_idx, column=1, sticky=tk.E, padx=(0, 8))
 
-        prov_lbl = tk.Label(material_frame, text=str(mat["provided"]), font=("Helvetica", 8), fg=fg_color, anchor=tk.E)
+        prov_lbl = tk.Label(material_frame, text=str(mat["provided"]), font=("Helvetica", 8),
+                            fg=fg_color, bg=bg, anchor=tk.E)
         prov_lbl.grid(row=row_idx, column=2, sticky=tk.E, padx=(0, 8))
 
-        carr_lbl = tk.Label(material_frame, text=str(mat["carrier"]), font=("Helvetica", 8), fg=fg_color, anchor=tk.E)
+        carr_lbl = tk.Label(material_frame, text=str(mat["carrier"]), font=("Helvetica", 8),
+                            fg=fg_color, bg=bg, anchor=tk.E)
         carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
 
-        comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8), fg=fg_color, anchor=tk.E)
+        comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8),
+                            fg=fg_color, bg=bg, anchor=tk.E)
         comp_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
 
 
@@ -278,7 +367,13 @@ def journal_entry(
 
     event_name = entry.get("event", "")
 
-    if event_name == "Cargo":
+    if event_name == "Docked":
+        _load_carrier_cargo()
+        _update_carrier_amounts()
+        if selected_site_id:
+            _update_display()
+
+    elif event_name == "Cargo":
         _load_carrier_cargo()
         _update_carrier_amounts()
         if selected_site_id:

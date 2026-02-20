@@ -253,6 +253,80 @@ def test_display_name_generation():
     print("[PASS] Display name generation")
 
 
+def test_clean_station_name():
+    assert plugin._clean_station_name("$EXT_PANEL_ColDepot;") == "ColDepot"
+    assert plugin._clean_station_name("$EXT_PANEL_MyStation;") == "MyStation"
+    assert plugin._clean_station_name("$EXT_PANEL_Test") == "Test"
+    assert plugin._clean_station_name("Normal Station") == "Normal Station"
+    assert plugin._clean_station_name("$EXT_PANEL_") == ""
+
+    print("[PASS] Station name $EXT_PANEL_ trimming")
+
+
+def test_display_name_with_ext_panel():
+    plugin.construction_sites.clear()
+    plugin.carrier_cargo = {}
+
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 777,
+        "ConstructionProgress": 0.5,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [],
+    }
+    plugin._process_construction_depot(entry, "$EXT_PANEL_ColDepot;", "Sol")
+    assert plugin.construction_sites[777]["display_name"] == "ColDepot - Sol"
+
+    print("[PASS] Display name trims $EXT_PANEL_ prefix from station name")
+
+
+def test_docked_event_loads_carrier_cargo():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cargo_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "Cargo",
+            "Vessel": "Ship",
+            "Count": 2,
+            "Inventory": [
+                {"Name": "aluminium", "Count": 200, "Stolen": 0},
+                {"Name": "steel", "Count": 150, "Stolen": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
+            json.dump(cargo_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo.clear()
+
+        docked_entry = {
+            "event": "Docked",
+            "StationName": "Test Station",
+            "StarSystem": "Test System",
+            "MarketID": 99999,
+        }
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Test System", "Test Station", docked_entry, state)
+
+        assert plugin.carrier_cargo.get("aluminium") == 200
+        assert plugin.carrier_cargo.get("steel") == 150
+
+    print("[PASS] Docked event triggers carrier cargo reload")
+
+
+def test_dark_mode_toggle():
+    assert plugin.dark_mode is False or plugin.dark_mode is True
+    original = plugin.dark_mode
+    plugin.dark_mode = False
+    plugin._toggle_dark_mode()
+    assert plugin.dark_mode is True
+    plugin._toggle_dark_mode()
+    assert plugin.dark_mode is False
+    plugin.dark_mode = original
+
+    print("[PASS] Dark mode toggle switches state")
+
+
 def test_journal_entry_cargo_event():
     with tempfile.TemporaryDirectory() as tmpdir:
         cargo_data = {
@@ -285,11 +359,15 @@ if __name__ == "__main__":
     test_plugin_start()
     test_completion_amount_calculation()
     test_display_name_generation()
+    test_clean_station_name()
+    test_display_name_with_ext_panel()
     test_construction_depot_processing()
     test_multiple_sites()
     test_carrier_cargo_update()
     test_contribution_updates()
     test_cargo_json_loading()
     test_journal_entry_cargo_event()
+    test_docked_event_loads_carrier_cargo()
+    test_dark_mode_toggle()
 
     print(f"\nAll tests passed!")

@@ -17,15 +17,21 @@ test_plugin.py     - Unit tests for plugin logic
 - Calculates CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)
 - Displays material table with Required, Provided, Carrier, Remaining columns
 - Updates in real-time as materials are delivered
+- Trims $EXT_PANEL_ prefix from station names in dropdown display
+- Reloads carrier cargo on every Docked event
+- Dark mode toggle for the material display UI
 
 ## Architecture
 - **Plugin API**: Uses EDMC plugin_start3, plugin_stop, plugin_app, journal_entry hooks
 - **Data Storage**: In-memory dictionary keyed by MarketID for each construction site
-- **UI**: tkinter with ttk.Combobox for site selection, grid-based material table
-- **Carrier Tracking**: Reads Cargo.json from Elite Dangerous journal directory
+- **UI**: tkinter with ttk.Combobox for site selection, grid-based material table, dark/light mode toggle
+- **Carrier Tracking**: Reads Cargo.json from Elite Dangerous journal directory on Docked, Cargo, and CargoTransfer events
 
 ## Recent Changes
+- 2026-02-20: Added $EXT_PANEL_ prefix trimming from station display names
+- 2026-02-20: Added Docked event handler to reload carrier cargo on every dock
+- 2026-02-20: Added dark mode toggle button with themed colors for material display
 - 2026-02-20: Initial plugin creation with full MVP feature set
 
 ## Testing
-Run `python test_plugin.py` to execute all unit tests (9 tests covering core logic, event handling, cargo loading, and display name generation).
+Run `python test_plugin.py` to execute all unit tests (13 tests covering core logic, event handling, cargo loading, name trimming, docked event, dark mode, and display name generation).
