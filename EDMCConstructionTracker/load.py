@@ -36,6 +36,10 @@ status_var = None
 dark_mode_btn = None
 header_label = None
 site_label = None
+type_label = None
+type_value_label = None
+system_label = None
+system_value_label = None
 progress_label_widget = None
 status_label_widget = None
 
@@ -131,6 +135,7 @@ def plugin_stop() -> None:
 def plugin_app(parent: tk.Frame) -> tk.Frame:
     global frame, site_selector, site_var, progress_var, material_frame, status_var
     global dark_mode_btn, header_label, site_label, progress_label_widget, status_label_widget
+    global type_label, type_value_label, system_label, system_value_label
 
     frame = tk.Frame(parent)
 
@@ -149,16 +154,26 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
     site_var.trace_add("write", _on_site_var_changed)
 
+    type_label = tk.Label(frame, text="Type:")
+    type_label.grid(row=2, column=0, sticky=tk.W)
+    type_value_label = tk.Label(frame, text="--")
+    type_value_label.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
+
+    system_label = tk.Label(frame, text="System:")
+    system_label.grid(row=3, column=0, sticky=tk.W)
+    system_value_label = tk.Label(frame, text="--")
+    system_value_label.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
+
     progress_var = tk.StringVar(value="Progress: --")
     progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
-    progress_label_widget.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
+    progress_label_widget.grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8), fg="gray")
-    status_label_widget.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
+    status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
     material_frame = tk.Frame(frame)
-    material_frame.grid(row=4, column=0, columnspan=3, sticky=tk.W)
+    material_frame.grid(row=6, column=0, columnspan=3, sticky=tk.W)
 
     _apply_theme()
 
@@ -222,9 +237,21 @@ def _get_site_display_name(station: Optional[str], system: Optional[str], market
     return f"Site #{market_id}"
 
 
+def _normalize_name(raw_name: str) -> str:
+    name = raw_name.strip().lower()
+    if name.startswith("$"):
+        name = name[1:]
+    if name.endswith(";"):
+        name = name[:-1]
+    if name.endswith("_name"):
+        name = name[:-5]
+    return name
+
+
 def _load_carrier_cargo() -> None:
     global carrier_cargo
     if not journal_dir:
+        logger.debug("Cannot load carrier cargo: journal_dir not set")
         return
 
     fc_path = os.path.join(journal_dir, "FCMaterials.json")
@@ -240,7 +267,7 @@ def _load_carrier_cargo() -> None:
         carrier_cargo.clear()
         for item in items:
             raw_name = item.get("Name", "")
-            name_key = raw_name.replace("$", "").replace("_name;", "").lower()
+            name_key = _normalize_name(raw_name)
             stock = item.get("Stock", 0)
             if name_key and stock > 0:
                 carrier_cargo[name_key] = stock
@@ -274,7 +301,7 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
     for res in resources:
         raw_name = res.get("Name", "")
         name_localised = res.get("Name_Localised", raw_name)
-        name_key = raw_name.replace("$", "").replace("_name;", "").lower()
+        name_key = _normalize_name(raw_name)
         required_amount = res.get("RequiredAmount", 0)
         provided_amount = res.get("ProvidedAmount", 0)
         carrier_amount = carrier_cargo.get(name_key, 0)
@@ -351,6 +378,11 @@ def _update_display() -> None:
     site_data = construction_sites[selected_site_id]
     progress = site_data["progress"]
 
+    if type_value_label:
+        type_value_label.config(text=site_data.get("site_type") or "--")
+    if system_value_label:
+        system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--")
+
     if site_data["complete"]:
         progress_var.set(f"Progress: COMPLETE")
         status_var.set("Construction finished!")
@@ -418,6 +450,15 @@ def _apply_theme() -> None:
 
     if site_label:
         site_label.config(bg=bg, fg=fg)
+
+    if type_label:
+        type_label.config(bg=bg, fg=fg)
+    if type_value_label:
+        type_value_label.config(bg=bg, fg=fg)
+    if system_label:
+        system_label.config(bg=bg, fg=fg)
+    if system_value_label:
+        system_value_label.config(bg=bg, fg=fg)
 
     if progress_label_widget:
         progress_label_widget.config(bg=bg, fg=fg)
@@ -498,21 +539,7 @@ def journal_entry(
 
     event_name = entry.get("event", "")
 
-    if event_name == "Docked":
-        _load_carrier_cargo()
-        _update_carrier_amounts()
-        _save_data()
-        if selected_site_id:
-            _update_display()
-
-    elif event_name == "Cargo":
-        _load_carrier_cargo()
-        _update_carrier_amounts()
-        _save_data()
-        if selected_site_id:
-            _update_display()
-
-    elif event_name == "CargoTransfer":
+    if event_name in ("Docked", "Cargo", "CargoTransfer", "Market", "Location", "CarrierJump"):
         _load_carrier_cargo()
         _update_carrier_amounts()
         _save_data()
@@ -530,7 +557,7 @@ def journal_entry(
             contributions = entry.get("Contributions", [])
             for contrib in contributions:
                 raw_name = contrib.get("Name", "")
-                name_key = raw_name.replace("$", "").replace("_name;", "").lower()
+                name_key = _normalize_name(raw_name)
                 amount = contrib.get("Amount", 0)
                 for mat in construction_sites[market_id]["materials"]:
                     if mat["name_key"] == name_key:

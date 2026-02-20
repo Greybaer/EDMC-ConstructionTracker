@@ -273,6 +273,20 @@ def test_display_name_generation():
     print("[PASS] Display name generation")
 
 
+def test_normalize_name():
+    assert plugin._normalize_name("$aluminium_name;") == "aluminium"
+    assert plugin._normalize_name("$steel_name;") == "steel"
+    assert plugin._normalize_name("Steel") == "steel"
+    assert plugin._normalize_name("steel") == "steel"
+    assert plugin._normalize_name("$polymers_name;") == "polymers"
+    assert plugin._normalize_name("polymers") == "polymers"
+    assert plugin._normalize_name("$ceramiccomposites_name;") == "ceramiccomposites"
+    assert plugin._normalize_name("  $Gold_Name;  ") == "gold"
+    assert plugin._normalize_name("") == ""
+
+    print("[PASS] Name normalization handles all formats")
+
+
 def test_parse_station_name():
     site_type, site_name, system_name = plugin._parse_station_name("$EXT_PANEL_ColDepot;My Station - Sol;")
     assert site_type == "ColDepot", f"Expected 'ColDepot', got '{site_type}'"
@@ -356,6 +370,31 @@ def test_docked_event_loads_carrier_cargo():
         assert plugin.carrier_cargo.get("steel") == 150
 
     print("[PASS] Docked event triggers carrier cargo reload")
+
+
+def test_market_event_loads_carrier_cargo():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "steel", "Name_Localised": "Steel",
+                 "Stock": 300, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo.clear()
+
+        market_entry = {"event": "Market", "MarketID": 99999, "StationName": "Test"}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", market_entry, state)
+
+        assert plugin.carrier_cargo.get("steel") == 300
+
+    print("[PASS] Market event triggers carrier cargo reload")
 
 
 def test_dark_mode_toggle():
@@ -532,6 +571,7 @@ if __name__ == "__main__":
     test_plugin_start()
     test_completion_amount_calculation()
     test_display_name_generation()
+    test_normalize_name()
     test_parse_station_name()
     test_display_name_with_ext_panel()
     test_construction_depot_processing()
@@ -541,6 +581,7 @@ if __name__ == "__main__":
     test_fc_materials_loading()
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
+    test_market_event_loads_carrier_cargo()
     test_dark_mode_toggle()
     test_dark_mode_button_label()
     test_save_and_load_data()
