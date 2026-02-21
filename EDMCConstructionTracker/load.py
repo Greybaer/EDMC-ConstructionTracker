@@ -21,6 +21,8 @@ plugin_version = "1.3.0"
 logger = logging.getLogger(f"{plugin_name}")
 
 carrier_cargo: Dict[str, int] = {}
+ship_cargo: Dict[str, int] = {}
+pending_transfers: List[Dict[str, Any]] = []
 construction_sites: Dict[int, Dict[str, Any]] = {}
 selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
@@ -293,8 +295,109 @@ def _calculate_completion(required: int, provided: int, carrier: int) -> int:
     return max(0, remaining)
 
 
+def _update_ship_cargo(entry: Dict[str, Any]) -> None:
+    global ship_cargo
+    inventory = entry.get("Inventory")
+    if inventory is None and journal_dir:
+        cargo_path = os.path.join(journal_dir, "Cargo.json")
+        if os.path.exists(cargo_path):
+            try:
+                with open(cargo_path, "r") as f:
+                    cargo_data = json.load(f)
+                inventory = cargo_data.get("Inventory")
+            except Exception as e:
+                logger.error(f"Error reading Cargo.json: {e}")
+
+    if inventory is None:
+        return
+
+    ship_cargo.clear()
+    for item in inventory:
+        raw_name = item.get("Name", "")
+        name_key = _normalize_name(raw_name)
+        count = _safe_int(item.get("Count", 0))
+        if name_key and count > 0:
+            ship_cargo[name_key] = ship_cargo.get(name_key, 0) + count
+    logger.debug(f"Ship cargo updated: {len(ship_cargo)} items")
+
+
+def _validate_pending_transfers() -> None:
+    global carrier_cargo, pending_transfers
+    if not pending_transfers:
+        return
+
+    aggregated: Dict[str, Dict[str, Any]] = {}
+    for transfer in pending_transfers:
+        name_key = transfer["name_key"]
+        count = transfer["count"]
+        direction = transfer["direction"]
+        ship_before = transfer["ship_before"]
+
+        if name_key not in aggregated:
+            aggregated[name_key] = {
+                "ship_before": ship_before,
+                "net_to_carrier": 0,
+            }
+
+        if direction == "tocarrier":
+            aggregated[name_key]["net_to_carrier"] += count
+        elif direction == "toship":
+            aggregated[name_key]["net_to_carrier"] -= count
+
+    pending_transfers.clear()
+
+    corrections_made = False
+    for name_key, agg in aggregated.items():
+        ship_before = agg["ship_before"]
+        net_to_carrier = agg["net_to_carrier"]
+        ship_after = ship_cargo.get(name_key, 0)
+
+        expected_ship_change = -net_to_carrier
+        actual_ship_change = ship_after - ship_before
+
+        if actual_ship_change == expected_ship_change:
+            continue
+
+        if net_to_carrier > 0 and actual_ship_change > 0:
+            logger.debug(
+                f"CargoTransfer sanity check: {name_key} skipping correction - "
+                f"ship gained cargo during tocarrier transfer (likely unrelated change)"
+            )
+            continue
+        if net_to_carrier < 0 and actual_ship_change < 0:
+            logger.debug(
+                f"CargoTransfer sanity check: {name_key} skipping correction - "
+                f"ship lost cargo during toship transfer (likely unrelated change)"
+            )
+            continue
+
+        actual_to_carrier = ship_before - ship_after
+        correction = actual_to_carrier - net_to_carrier
+
+        if correction == 0:
+            continue
+
+        logger.warning(
+            f"CargoTransfer sanity check: {name_key} expected ship change "
+            f"{expected_ship_change:+d}, actual {actual_ship_change:+d} "
+            f"(before={ship_before}, after={ship_after}). "
+            f"Adjusting carrier by {correction:+d}"
+        )
+        carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + correction
+        if carrier_cargo.get(name_key, 0) <= 0:
+            carrier_cargo.pop(name_key, None)
+        corrections_made = True
+
+    if corrections_made:
+        _update_carrier_amounts()
+        _save_data()
+        if selected_site_id:
+            _update_display()
+        logger.info(f"Carrier cargo corrected via sanity check: {dict(carrier_cargo)}")
+
+
 def _process_cargo_transfer(entry: Dict[str, Any]) -> None:
-    global carrier_cargo
+    global carrier_cargo, pending_transfers
     transfers = entry.get("Transfers", [])
     for transfer in transfers:
         raw_name = transfer.get("Type", "")
@@ -304,6 +407,15 @@ def _process_cargo_transfer(entry: Dict[str, Any]) -> None:
 
         if not name_key or count <= 0:
             continue
+
+        ship_before = ship_cargo.get(name_key, 0)
+
+        pending_transfers.append({
+            "name_key": name_key,
+            "count": count,
+            "direction": direction,
+            "ship_before": ship_before,
+        })
 
         if direction == "tocarrier":
             carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + count
@@ -581,7 +693,18 @@ def journal_entry(
         if selected_site_id:
             _update_display()
 
-    elif event_name in ("Docked", "Cargo", "Market", "Location", "CarrierJump"):
+    elif event_name == "Cargo":
+        _update_ship_cargo(entry)
+        if pending_transfers:
+            _validate_pending_transfers()
+        if not carrier_cargo:
+            _load_carrier_cargo()
+            _update_carrier_amounts()
+            _save_data()
+            if selected_site_id:
+                _update_display()
+
+    elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
         if not carrier_cargo:
             _load_carrier_cargo()
             _update_carrier_amounts()

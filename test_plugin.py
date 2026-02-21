@@ -22,6 +22,8 @@ _test_tmpdir = tempfile.mkdtemp()
 def _reset_plugin():
     plugin.construction_sites.clear()
     plugin.carrier_cargo.clear()
+    plugin.ship_cargo.clear()
+    plugin.pending_transfers.clear()
     plugin.selected_site_id = None
     plugin.dark_mode = False
     plugin.plugin_dir = _test_tmpdir
@@ -657,6 +659,225 @@ def test_docked_skips_reload_when_cargo_exists():
     print("[PASS] Docked event skips FCMaterials reload when carrier cargo exists")
 
 
+def test_cargo_event_updates_ship_cargo():
+    _reset_plugin()
+
+    entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "gold", "Count": 50, "Stolen": 0},
+            {"Name": "silver", "Count": 30, "Stolen": 0},
+            {"Name": "gold", "MissionID": 12345, "Count": 10, "Stolen": 0},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+    assert plugin.ship_cargo.get("gold") == 60
+    assert plugin.ship_cargo.get("silver") == 30
+
+    print("[PASS] Cargo event updates ship cargo from Inventory")
+
+
+def test_cargo_event_reads_cargo_json():
+    _reset_plugin()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cargo_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "Cargo",
+            "Vessel": "Ship",
+            "Inventory": [
+                {"Name": "aluminium", "Count": 100, "Stolen": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
+            json.dump(cargo_data, f)
+
+        plugin.journal_dir = tmpdir
+
+        entry = {"event": "Cargo", "Vessel": "Ship", "Count": 100}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+        assert plugin.ship_cargo.get("aluminium") == 100
+
+    print("[PASS] Cargo event reads Cargo.json when Inventory not in event")
+
+
+def test_sanity_check_corrects_tocarrier():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 200}
+
+    transfer_entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 150
+    assert len(plugin.pending_transfers) == 1
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 170, "Stolen": 0},
+        ],
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 130
+    assert len(plugin.pending_transfers) == 0
+
+    print("[PASS] Sanity check corrects tocarrier when ship delta mismatches")
+
+
+def test_sanity_check_corrects_toship():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 50}
+
+    transfer_entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 30, "Direction": "toship"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 70
+    assert len(plugin.pending_transfers) == 1
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 70, "Stolen": 0},
+        ],
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 80
+    assert len(plugin.pending_transfers) == 0
+
+    print("[PASS] Sanity check corrects toship when ship delta mismatches")
+
+
+def test_sanity_check_no_correction_needed():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 200}
+
+    transfer_entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 150
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 150, "Stolen": 0},
+        ],
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 150
+    assert len(plugin.pending_transfers) == 0
+
+    print("[PASS] Sanity check makes no correction when transfer is accurate")
+
+
+def test_sanity_check_multiple_transfers_same_commodity():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 300}
+
+    transfer1 = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
+        ],
+    }
+    transfer2 = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 30, "Direction": "tocarrier"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer1, state)
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer2, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 180
+    assert len(plugin.pending_transfers) == 2
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 220, "Stolen": 0},
+        ],
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 180
+    assert len(plugin.pending_transfers) == 0
+
+    print("[PASS] Sanity check handles multiple transfers of same commodity correctly")
+
+
+def test_sanity_check_mixed_directions():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 200}
+    plugin.ship_cargo = {"aluminium": 100}
+
+    transfer1 = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
+        ],
+    }
+    transfer2 = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "aluminium", "Count": 20, "Direction": "toship"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer1, state)
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer2, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 230
+    assert len(plugin.pending_transfers) == 2
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 70, "Stolen": 0},
+        ],
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 230
+    assert len(plugin.pending_transfers) == 0
+
+    print("[PASS] Sanity check handles mixed tocarrier/toship transfers correctly")
+
+
 def test_dark_mode_toggle():
     _reset_plugin()
     plugin.dark_mode = False
@@ -853,6 +1074,13 @@ if __name__ == "__main__":
     test_cargo_transfer_updates_construction_site()
     test_carrier_cargo_persisted()
     test_docked_skips_reload_when_cargo_exists()
+    test_cargo_event_updates_ship_cargo()
+    test_cargo_event_reads_cargo_json()
+    test_sanity_check_corrects_tocarrier()
+    test_sanity_check_corrects_toship()
+    test_sanity_check_no_correction_needed()
+    test_sanity_check_multiple_transfers_same_commodity()
+    test_sanity_check_mixed_directions()
     test_dark_mode_toggle()
     test_dark_mode_button_label()
     test_save_and_load_data()
