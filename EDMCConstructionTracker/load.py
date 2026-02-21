@@ -28,6 +28,9 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 dark_mode: bool = False
+_fc_materials_mtime: float = 0.0
+_fc_refresh_timer_id = None
+FC_REFRESH_INTERVAL_MS = 15 * 60 * 1000
 
 frame = None
 site_selector = None
@@ -127,14 +130,22 @@ def plugin_start3(plugin_dir_path: str) -> str:
     plugin_dir = plugin_dir_path
     _load_data()
     _init_journal_dir()
-    if journal_dir and not carrier_cargo:
+    if journal_dir:
         _load_carrier_cargo()
         _update_carrier_amounts()
+        _save_data()
     logger.info(f"{plugin_name} v{plugin_version} started")
     return plugin_name
 
 
 def plugin_stop() -> None:
+    global _fc_refresh_timer_id
+    if _fc_refresh_timer_id and frame:
+        try:
+            frame.after_cancel(_fc_refresh_timer_id)
+        except Exception:
+            pass
+        _fc_refresh_timer_id = None
     _save_data()
     logger.info(f"{plugin_name} stopped")
 
@@ -188,7 +199,32 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
         _update_site_selector()
         _update_display()
 
+    _schedule_fc_refresh()
+
     return frame
+
+
+def _schedule_fc_refresh() -> None:
+    global _fc_refresh_timer_id
+    if not frame:
+        return
+    _fc_refresh_timer_id = frame.after(FC_REFRESH_INTERVAL_MS, _periodic_fc_refresh)
+    logger.debug("Scheduled FC cargo refresh timer")
+
+
+def _periodic_fc_refresh() -> None:
+    global _fc_refresh_timer_id
+    _fc_refresh_timer_id = None
+
+    if journal_dir and _load_carrier_cargo(only_if_modified=True):
+        _update_carrier_amounts()
+        _save_data()
+        if selected_site_id:
+            _update_display()
+        logger.info("Periodic FC cargo refresh: updated from FCMaterials.json")
+
+    if frame:
+        _schedule_fc_refresh()
 
 
 def _on_site_var_changed(*args) -> None:
@@ -262,18 +298,23 @@ def _normalize_name(raw_name: str) -> str:
     return name
 
 
-def _load_carrier_cargo() -> None:
-    global carrier_cargo
+def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
+    global carrier_cargo, _fc_materials_mtime
     if not journal_dir:
         logger.debug("Cannot load carrier cargo: journal_dir not set")
-        return
+        return False
 
     fc_path = os.path.join(journal_dir, "FCMaterials.json")
     if not os.path.exists(fc_path):
         logger.debug(f"FCMaterials.json not found at {fc_path}")
-        return
+        return False
 
     try:
+        current_mtime = os.path.getmtime(fc_path)
+        if only_if_modified and current_mtime <= _fc_materials_mtime:
+            logger.debug("FCMaterials.json not modified since last read, skipping")
+            return False
+
         with open(fc_path, "r") as f:
             data = json.load(f)
 
@@ -285,9 +326,12 @@ def _load_carrier_cargo() -> None:
             stock = item.get("Stock", 0)
             if name_key and stock > 0:
                 carrier_cargo[name_key] = stock
+        _fc_materials_mtime = current_mtime
         logger.info(f"Loaded FC cargo: {len(carrier_cargo)} items from FCMaterials.json")
+        return True
     except Exception as e:
         logger.error(f"Error loading FCMaterials.json: {e}")
+        return False
 
 
 def _calculate_completion(required: int, provided: int, carrier: int) -> int:
@@ -698,15 +742,14 @@ def journal_entry(
         if pending_transfers:
             _validate_pending_transfers()
         if not carrier_cargo:
-            _load_carrier_cargo()
-            _update_carrier_amounts()
-            _save_data()
-            if selected_site_id:
-                _update_display()
+            if _load_carrier_cargo():
+                _update_carrier_amounts()
+                _save_data()
+                if selected_site_id:
+                    _update_display()
 
     elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
-        if not carrier_cargo:
-            _load_carrier_cargo()
+        if _load_carrier_cargo(only_if_modified=True):
             _update_carrier_amounts()
             _save_data()
             if selected_site_id:

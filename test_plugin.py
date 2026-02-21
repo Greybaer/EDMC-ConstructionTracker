@@ -27,6 +27,7 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.dark_mode = False
     plugin.plugin_dir = _test_tmpdir
+    plugin._fc_materials_mtime = 0.0
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
         os.remove(save_path)
@@ -646,17 +647,91 @@ def test_carrier_cargo_persisted():
     print("[PASS] Carrier cargo is persisted across save/load")
 
 
-def test_docked_skips_reload_when_cargo_exists():
+def test_docked_reloads_if_file_modified():
     _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 999}
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "$gold_name;", "Stock": 200, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
 
-    entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo = {"aluminium": 999}
+        plugin._fc_materials_mtime = 0.0
 
-    assert plugin.carrier_cargo.get("aluminium") == 999
+        entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
 
-    print("[PASS] Docked event skips FCMaterials reload when carrier cargo exists")
+        assert plugin.carrier_cargo.get("gold") == 200
+        assert "aluminium" not in plugin.carrier_cargo
+
+    print("[PASS] Docked event reloads FCMaterials.json when file has been modified")
+
+
+def test_docked_skips_reload_if_not_modified():
+    _reset_plugin()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fc_path = os.path.join(tmpdir, "FCMaterials.json")
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "$gold_name;", "Stock": 200, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(fc_path, "w") as f:
+            json.dump(fc_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo = {"aluminium": 999}
+        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
+
+        entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+        assert plugin.carrier_cargo.get("aluminium") == 999
+
+    print("[PASS] Docked event skips reload when FCMaterials.json not modified")
+
+
+def test_startup_always_reloads_fc_materials():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        save_data = {
+            "dark_mode": False,
+            "selected_site_id": None,
+            "construction_sites": {},
+            "carrier_cargo": {"aluminium": 500, "steel": 200},
+        }
+        with open(os.path.join(tmpdir, plugin.SAVE_FILE), "w") as f:
+            json.dump(save_data, f)
+
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "$aluminium_name;", "Stock": 300, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.plugin_start3(tmpdir)
+
+        assert plugin.carrier_cargo.get("aluminium") == 300
+        assert "steel" not in plugin.carrier_cargo
+
+    print("[PASS] Startup always reloads FCMaterials.json over persisted data")
 
 
 def test_cargo_event_updates_ship_cargo():
@@ -1073,7 +1148,9 @@ if __name__ == "__main__":
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
     test_carrier_cargo_persisted()
-    test_docked_skips_reload_when_cargo_exists()
+    test_docked_reloads_if_file_modified()
+    test_docked_skips_reload_if_not_modified()
+    test_startup_always_reloads_fc_materials()
     test_cargo_event_updates_ship_cargo()
     test_cargo_event_reads_cargo_json()
     test_sanity_check_corrects_tocarrier()

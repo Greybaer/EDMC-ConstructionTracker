@@ -31,7 +31,7 @@ The plugin follows EDMC's plugin contract:
 
 ### Fleet Carrier Cargo Sources (in priority order)
 1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries.
-2. **FCMaterials.json** (initial fallback): Read from the Elite Dangerous journal directory on first load only (when no carrier cargo is persisted). Uses `Stock` field from `Items[]`. Not reloaded on every event to avoid overwriting accurate incremental data.
+2. **FCMaterials.json** (startup + periodic refresh): Always reloaded on plugin startup to get fresh baseline. Also reloaded on Docked/Market/Location/CarrierJump events if the file has been modified since the last read (tracks file modification time). A periodic timer checks every 15 minutes for file changes. Uses `Stock` field from `Items[]`.
 3. **CargoTransfer journal events** (incremental updates): Tracks `tocarrier` and `toship` transfers in real-time, adjusting the carrier cargo baseline up or down. Each transfer is buffered as a pending validation until the next Cargo event confirms the ship inventory changed by the expected amount. If there's a mismatch, carrier cargo is auto-corrected based on the actual ship delta.
 
 ### Name Normalization
@@ -61,7 +61,7 @@ Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` an
 - `ColonisationContribution` — Updates material delivery counts in real-time
 - `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), buffers transfer for validation
 - `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
-- `Docked`, `Market`, `Location`, `CarrierJump` — Loads FCMaterials.json as baseline only if no carrier cargo exists yet
+- `Docked`, `Market`, `Location`, `CarrierJump` — Reloads FCMaterials.json if the file has been modified since last read (checks file modification time)
 
 ### Completion Calculation
 `CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
@@ -84,9 +84,13 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 37 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, name normalization, station name parsing, dark mode, persistence
+- 40 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, dark mode, persistence
 
 ## Recent Changes
+- 2026-02-21: FCMaterials.json always reloaded on startup for fresh baseline, not relying on stale persisted data
+- 2026-02-21: Docked/Market/Location/CarrierJump events reload FCMaterials.json if file modified (tracks mtime)
+- 2026-02-21: Added 15-minute periodic timer to check for FCMaterials.json changes and refresh carrier cargo
+- 2026-02-21: Timer cleanup on plugin_stop to avoid orphaned callbacks
 - 2026-02-21: Remaining formula changed to `required - (provided + carrier)`, green color requires both remaining=0 and provided>=required
 - 2026-02-21: Added ship cargo tracking from Cargo events (Inventory field and Cargo.json fallback)
 - 2026-02-21: Added sanity check: validates CargoTransfer amounts against ship cargo deltas, auto-corrects carrier cargo on mismatch
