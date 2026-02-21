@@ -575,12 +575,13 @@ def capi_fleetcarrier(data) -> None:
     if not data:
         return
 
+    logger.info(f"CAPI fleetcarrier called, top-level keys: {list(data.keys()) if hasattr(data, 'keys') else type(data)}")
     _process_capi_carrier_cargo(data)
     _update_carrier_amounts()
     _save_data()
     if selected_site_id:
         _update_display()
-    logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items")
+    logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items: {dict(carrier_cargo)}")
 
 
 def _process_capi_carrier_cargo(data) -> None:
@@ -588,25 +589,46 @@ def _process_capi_carrier_cargo(data) -> None:
 
     carrier_cargo.clear()
 
-    cargo_section = data.get("cargo", {})
-    if isinstance(cargo_section, dict):
+    cargo_section = data.get("cargo", [])
+    logger.info(f"CAPI cargo type: {type(cargo_section).__name__}, value preview: {str(cargo_section)[:500]}")
+
+    cargo_list = []
+    if isinstance(cargo_section, list):
+        cargo_list = cargo_section
+    elif isinstance(cargo_section, dict):
         cargo_list = cargo_section.get("commodities", []) or cargo_section.get("items", [])
-        for item in cargo_list:
-            name_key = _normalize_name(item.get("name", ""))
-            qty = item.get("qty", 0)
-            if name_key and qty > 0:
-                carrier_cargo[name_key] = qty
+
+    for item in cargo_list:
+        name_raw = item.get("commodity", "") or item.get("name", "")
+        name_key = _normalize_name(name_raw)
+        qty = item.get("quantity", 0) or item.get("qty", 0)
+        if name_key and qty > 0:
+            carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + qty
 
     orders = data.get("orders", {})
-    commodity_orders = orders.get("commodities", {})
-    if isinstance(commodity_orders, dict):
-        sales = commodity_orders.get("sales", {})
-        if isinstance(sales, dict):
-            sales = sales.values()
-        for item in sales:
-            name_key = _normalize_name(item.get("name", ""))
-            outstanding = item.get("outstanding", 0)
-            if name_key and outstanding > 0 and name_key not in carrier_cargo:
-                carrier_cargo[name_key] = outstanding
+    if isinstance(orders, dict):
+        commodity_orders = orders.get("commodities", {})
+        if isinstance(commodity_orders, dict):
+            sales = commodity_orders.get("sales", {})
+            if isinstance(sales, dict):
+                sales = sales.values()
+            for item in sales:
+                name_raw = item.get("commodity", "") or item.get("name", "")
+                name_key = _normalize_name(name_raw)
+                outstanding = item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0)
+                if name_key and outstanding > 0 and name_key not in carrier_cargo:
+                    carrier_cargo[name_key] = outstanding
 
-    logger.debug(f"CAPI carrier cargo parsed: {carrier_cargo}")
+    market = data.get("market", {})
+    if isinstance(market, dict) and not orders:
+        sell_orders = market.get("sell_orders", [])
+        if isinstance(sell_orders, dict):
+            sell_orders = sell_orders.values()
+        for item in sell_orders:
+            name_raw = item.get("commodity", "") or item.get("name", "")
+            name_key = _normalize_name(name_raw)
+            qty = item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0)
+            if name_key and qty > 0 and name_key not in carrier_cargo:
+                carrier_cargo[name_key] = qty
+
+    logger.info(f"CAPI carrier cargo parsed: {dict(carrier_cargo)}")

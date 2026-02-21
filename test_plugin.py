@@ -397,9 +397,8 @@ def test_market_event_loads_carrier_cargo():
     print("[PASS] Market event triggers carrier cargo reload")
 
 
-def test_capi_fleetcarrier_cargo_items():
+def test_capi_fleetcarrier_cargo_list_format():
     _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 50}
 
     depot_entry = {
         "event": "ColonisationConstructionDepot",
@@ -427,14 +426,12 @@ def test_capi_fleetcarrier_cargo_items():
     plugin._process_construction_depot(depot_entry, "Test Station", "Test System")
 
     capi_data = {
-        "cargo": {
-            "capacity": 25000,
-            "qty": 350,
-            "commodities": [
-                {"id": 1, "name": "Aluminium", "locName": "Aluminium", "qty": 200, "value": 340, "stolen": 0, "mission": 0},
-                {"id": 2, "name": "Steel", "locName": "Steel", "qty": 150, "value": 280, "stolen": 0, "mission": 0},
-            ],
-        },
+        "name": {"callsign": "T3S-T0P", "name": "TEST CARRIER"},
+        "currentStarSystem": "Sol",
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 200},
+            {"commodity": "Steel", "quantity": 150},
+        ],
         "orders": {"commodities": {"sales": {}, "purchases": {}}},
     }
     plugin.capi_fleetcarrier(capi_data)
@@ -450,18 +447,18 @@ def test_capi_fleetcarrier_cargo_items():
     assert mat_steel["carrier"] == 150
     assert mat_steel["completion"] == 100
 
-    print("[PASS] CAPI fleetcarrier cargo commodities populate carrier amounts")
+    print("[PASS] CAPI fleetcarrier cargo list format populates carrier amounts")
 
 
-def test_capi_fleetcarrier_cargo_items_fallback():
+def test_capi_fleetcarrier_cargo_dict_format():
     _reset_plugin()
 
     capi_data = {
         "cargo": {
             "capacity": 25000,
             "qty": 200,
-            "items": [
-                {"id": 1, "name": "Aluminium", "locName": "Aluminium", "qty": 200, "value": 340, "stolen": 0, "mission": 0},
+            "commodities": [
+                {"name": "Aluminium", "qty": 200},
             ],
         },
         "orders": {"commodities": {"sales": {}, "purchases": {}}},
@@ -470,14 +467,32 @@ def test_capi_fleetcarrier_cargo_items_fallback():
 
     assert plugin.carrier_cargo.get("aluminium") == 200
 
-    print("[PASS] CAPI fleetcarrier cargo items fallback works")
+    print("[PASS] CAPI fleetcarrier cargo dict format fallback works")
+
+
+def test_capi_fleetcarrier_cargo_duplicate_entries():
+    _reset_plugin()
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 200},
+            {"commodity": "Aluminium", "quantity": 100},
+            {"commodity": "Steel", "quantity": 50},
+        ],
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 300
+    assert plugin.carrier_cargo.get("steel") == 50
+
+    print("[PASS] CAPI fleetcarrier sums duplicate cargo entries")
 
 
 def test_capi_fleetcarrier_sales_orders():
     _reset_plugin()
 
     capi_data = {
-        "cargo": {"capacity": 25000, "qty": 0, "commodities": []},
+        "cargo": [],
         "orders": {
             "commodities": {
                 "sales": {
@@ -503,10 +518,7 @@ def test_capi_fleetcarrier_empty_data():
     plugin.capi_fleetcarrier(None)
     assert plugin.carrier_cargo.get("old_item") == 100
 
-    capi_data = {
-        "cargo": {"capacity": 25000, "qty": 0, "commodities": []},
-        "orders": {"commodities": {"sales": {}, "purchases": {}}},
-    }
+    capi_data = {"cargo": [], "orders": {"commodities": {"sales": {}, "purchases": {}}}}
     plugin.capi_fleetcarrier(capi_data)
     assert len(plugin.carrier_cargo) == 0
 
@@ -698,8 +710,9 @@ if __name__ == "__main__":
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()
     test_market_event_loads_carrier_cargo()
-    test_capi_fleetcarrier_cargo_items()
-    test_capi_fleetcarrier_cargo_items_fallback()
+    test_capi_fleetcarrier_cargo_list_format()
+    test_capi_fleetcarrier_cargo_dict_format()
+    test_capi_fleetcarrier_cargo_duplicate_entries()
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_empty_data()
     test_dark_mode_toggle()

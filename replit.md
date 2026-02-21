@@ -28,7 +28,7 @@ The plugin follows EDMC's plugin contract:
 - **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
 
 ### Fleet Carrier Cargo Sources (in priority order)
-1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Parses `cargo.commodities[]` for cargo hold and `orders.commodities.sales` for items listed for sale. Has a 15-minute cooldown between queries.
+1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries.
 2. **FCMaterials.json** (fallback): Read from the Elite Dangerous journal directory. Updated when the player opens their carrier's commodity market interface. Uses `Stock` field from `Items[]`. Triggered on Docked, Cargo, CargoTransfer, Market, Location, and CarrierJump journal events.
 
 ### Name Normalization
@@ -79,7 +79,7 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 22 tests covering core logic, event handling, CAPI data, FCMaterials loading, name normalization, station name parsing, dark mode, persistence
+- 24 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), FCMaterials loading, name normalization, station name parsing, dark mode, persistence
 
 ## Recent Changes
 - 2026-02-20: Added `capi_fleetcarrier(data)` hook to receive FC cargo from Frontier's Companion API
