@@ -59,7 +59,7 @@ Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` an
 - `Docked`, `Cargo`, `CargoTransfer`, `Market`, `Location`, `CarrierJump` — Triggers reload of Fleet Carrier cargo from `FCMaterials.json`
 
 ### Completion Calculation
-`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material is still needed.
+`CompletionAmount = RequiredAmount - ProvidedAmount` — This tells the player how much more of each material is still needed. Carrier cargo is displayed as an informational column but does not factor into the remaining calculation.
 
 ### Journal Directory Detection
 Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.

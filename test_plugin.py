@@ -77,11 +77,11 @@ def test_construction_depot_processing():
     assert alum["required"] == 500
     assert alum["provided"] == 200
     assert alum["carrier"] == 100
-    assert alum["completion"] == 200
+    assert alum["completion"] == 300
 
     ceramic = site["materials"][1]
     assert ceramic["carrier"] == 50
-    assert ceramic["completion"] == 150
+    assert ceramic["completion"] == 200
 
     print("[PASS] Construction depot processing with carrier amounts")
 
@@ -137,13 +137,13 @@ def test_multiple_sites():
 
 
 def test_completion_amount_calculation():
-    assert plugin._calculate_completion(500, 200, 100) == 200
-    assert plugin._calculate_completion(500, 400, 100) == 0
-    assert plugin._calculate_completion(500, 300, 300) == 0
+    assert plugin._calculate_completion(500, 200, 100) == 300
+    assert plugin._calculate_completion(500, 400, 100) == 100
+    assert plugin._calculate_completion(500, 300, 300) == 200
     assert plugin._calculate_completion(100, 0, 0) == 100
     assert plugin._calculate_completion(100, 100, 0) == 0
-    assert plugin._calculate_completion(100, 50, 50) == 0
-    assert plugin._calculate_completion(100, 80, 30) == 0
+    assert plugin._calculate_completion(100, 50, 50) == 50
+    assert plugin._calculate_completion(100, 80, 30) == 20
 
     print("[PASS] CompletionAmount calculation (never goes negative)")
 
@@ -177,7 +177,7 @@ def test_carrier_cargo_update():
 
     mat = plugin.construction_sites[999]["materials"][0]
     assert mat["carrier"] == 80
-    assert mat["completion"] == 70
+    assert mat["completion"] == 150
 
     print("[PASS] Carrier cargo update recalculates CompletionAmount")
 
@@ -206,7 +206,7 @@ def test_contribution_updates():
 
     mat = plugin.construction_sites[555]["materials"][0]
     assert mat["provided"] == 80
-    assert mat["completion"] == 270
+    assert mat["completion"] == 320
 
     contrib_entry = {
         "event": "ColonisationContribution",
@@ -225,7 +225,7 @@ def test_contribution_updates():
 
     mat = plugin.construction_sites[555]["materials"][0]
     assert mat["provided"] == 100
-    assert mat["completion"] == 250
+    assert mat["completion"] == 300
 
     print("[PASS] ColonisationContribution updates ProvidedAmount and recalculates CompletionAmount")
 
@@ -441,11 +441,11 @@ def test_capi_fleetcarrier_cargo_list_format():
 
     mat_alum = plugin.construction_sites[6000]["materials"][0]
     assert mat_alum["carrier"] == 200
-    assert mat_alum["completion"] == 200
+    assert mat_alum["completion"] == 400
 
     mat_steel = plugin.construction_sites[6000]["materials"][1]
     assert mat_steel["carrier"] == 150
-    assert mat_steel["completion"] == 100
+    assert mat_steel["completion"] == 250
 
     print("[PASS] CAPI fleetcarrier cargo list format populates carrier amounts")
 

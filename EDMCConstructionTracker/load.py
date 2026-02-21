@@ -284,7 +284,7 @@ def _load_carrier_cargo() -> None:
 
 
 def _calculate_completion(required: int, provided: int, carrier: int) -> int:
-    remaining = required - (provided + carrier)
+    remaining = required - provided
     return max(0, remaining)
 
 
