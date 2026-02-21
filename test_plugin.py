@@ -511,6 +511,32 @@ def test_capi_fleetcarrier_sales_orders():
     print("[PASS] CAPI fleetcarrier sales orders populate carrier amounts")
 
 
+def test_capi_fleetcarrier_string_values():
+    _reset_plugin()
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": "200"},
+            {"commodity": "Steel", "quantity": "150"},
+        ],
+        "orders": {
+            "commodities": {
+                "sales": {
+                    "100": {"name": "Gold", "outstanding": "500"},
+                },
+                "purchases": {},
+            }
+        },
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 200
+    assert plugin.carrier_cargo.get("steel") == 150
+    assert plugin.carrier_cargo.get("gold") == 500
+
+    print("[PASS] CAPI fleetcarrier handles string quantity values")
+
+
 def test_capi_fleetcarrier_empty_data():
     _reset_plugin()
     plugin.carrier_cargo = {"old_item": 100}
@@ -714,6 +740,7 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_cargo_dict_format()
     test_capi_fleetcarrier_cargo_duplicate_entries()
     test_capi_fleetcarrier_sales_orders()
+    test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
     test_dark_mode_toggle()
     test_dark_mode_button_label()

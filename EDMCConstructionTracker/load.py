@@ -237,6 +237,13 @@ def _get_site_display_name(station: Optional[str], system: Optional[str], market
     return f"Site #{market_id}"
 
 
+def _safe_int(value) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
 def _normalize_name(raw_name: str) -> str:
     name = raw_name.strip().lower()
     if name.startswith("$"):
@@ -601,7 +608,7 @@ def _process_capi_carrier_cargo(data) -> None:
     for item in cargo_list:
         name_raw = item.get("commodity", "") or item.get("name", "")
         name_key = _normalize_name(name_raw)
-        qty = item.get("quantity", 0) or item.get("qty", 0)
+        qty = _safe_int(item.get("quantity", 0) or item.get("qty", 0))
         if name_key and qty > 0:
             carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + qty
 
@@ -615,7 +622,7 @@ def _process_capi_carrier_cargo(data) -> None:
             for item in sales:
                 name_raw = item.get("commodity", "") or item.get("name", "")
                 name_key = _normalize_name(name_raw)
-                outstanding = item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0)
+                outstanding = _safe_int(item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0))
                 if name_key and outstanding > 0 and name_key not in carrier_cargo:
                     carrier_cargo[name_key] = outstanding
 
@@ -627,7 +634,7 @@ def _process_capi_carrier_cargo(data) -> None:
         for item in sell_orders:
             name_raw = item.get("commodity", "") or item.get("name", "")
             name_key = _normalize_name(name_raw)
-            qty = item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0)
+            qty = _safe_int(item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0))
             if name_key and qty > 0 and name_key not in carrier_cargo:
                 carrier_cargo[name_key] = qty
 
