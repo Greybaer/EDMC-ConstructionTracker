@@ -24,12 +24,13 @@ The plugin follows EDMC's plugin contract:
 
 ### Data Model
 - **Construction Sites**: Stored in an in-memory dictionary keyed by `MarketID` (integer). Each site contains construction progress, resource requirements (required, provided, carrier amounts), station metadata, and parsed station name components (site_type, site_name, parsed_system).
-- **Carrier Cargo**: A dictionary mapping resource names (lowercase, normalized) to quantities. Populated from CAPI `/fleetcarrier` endpoint (primary) or `FCMaterials.json` file (fallback).
+- **Carrier Cargo**: A dictionary mapping resource names (lowercase, normalized) to quantities. Baseline set from CAPI `/fleetcarrier` endpoint (primary) or `FCMaterials.json` file (fallback on first load). Kept up-to-date incrementally via `CargoTransfer` journal events. Persisted to disk across EDMC restarts.
 - **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
 
 ### Fleet Carrier Cargo Sources (in priority order)
 1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries.
-2. **FCMaterials.json** (fallback): Read from the Elite Dangerous journal directory. Updated when the player opens their carrier's commodity market interface. Uses `Stock` field from `Items[]`. Triggered on Docked, Cargo, CargoTransfer, Market, Location, and CarrierJump journal events.
+2. **FCMaterials.json** (initial fallback): Read from the Elite Dangerous journal directory on first load only (when no carrier cargo is persisted). Uses `Stock` field from `Items[]`. Not reloaded on every event to avoid overwriting accurate incremental data.
+3. **CargoTransfer journal events** (incremental updates): Tracks `tocarrier` and `toship` transfers in real-time, adjusting the carrier cargo baseline up or down. This keeps the inventory accurate between CAPI refreshes.
 
 ### Name Normalization
 The `_normalize_name()` function handles all commodity name formats consistently:
@@ -39,7 +40,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 
 ### Data Persistence
 - **File**: `construction_tracker_data.json` stored in the plugin directory
-- **Contents**: Construction sites, selected site ID, and dark mode preference
+- **Contents**: Construction sites, selected site ID, dark mode preference, and carrier cargo inventory
 - **Strategy**: Loaded on startup, saved on every state change. This ensures data survives EDMC restarts.
 
 ### UI Architecture
@@ -56,7 +57,8 @@ Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` an
 ### Journal Events Handled
 - `ColonisationConstructionDepot` — Updates construction site data with full material requirements
 - `ColonisationContribution` — Updates material delivery counts in real-time
-- `Docked`, `Cargo`, `CargoTransfer`, `Market`, `Location`, `CarrierJump` — Triggers reload of Fleet Carrier cargo from `FCMaterials.json`
+- `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts)
+- `Docked`, `Cargo`, `Market`, `Location`, `CarrierJump` — Loads FCMaterials.json as baseline only if no carrier cargo exists yet
 
 ### Completion Calculation
 `CompletionAmount = RequiredAmount - ProvidedAmount` — This tells the player how much more of each material is still needed. Carrier cargo is displayed as an informational column but does not factor into the remaining calculation.
@@ -79,9 +81,13 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 24 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), FCMaterials loading, name normalization, station name parsing, dark mode, persistence
+- 30 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, FCMaterials loading, name normalization, station name parsing, dark mode, persistence
 
 ## Recent Changes
+- 2026-02-21: Carrier cargo now tracked incrementally via CargoTransfer events (tocarrier/toship)
+- 2026-02-21: Carrier cargo persisted to save file, survives EDMC restarts
+- 2026-02-21: FCMaterials.json only loaded as initial baseline (not reloaded on every event)
+- 2026-02-21: Remaining calculation changed to `Required - Provided` (carrier is informational only)
 - 2026-02-20: Added `capi_fleetcarrier(data)` hook to receive FC cargo from Frontier's Companion API
 - 2026-02-20: Added Type: and System: display lines in the UI below site selector
 - 2026-02-20: Improved name normalization with dedicated `_normalize_name()` function

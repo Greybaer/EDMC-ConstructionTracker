@@ -551,6 +551,112 @@ def test_capi_fleetcarrier_empty_data():
     print("[PASS] CAPI fleetcarrier handles empty/null data")
 
 
+def test_cargo_transfer_to_carrier():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+
+    entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "$aluminium_name;", "Type_Localised": "Aluminium", "Count": 50, "Direction": "tocarrier"},
+            {"Type": "$steel_name;", "Type_Localised": "Steel", "Count": 200, "Direction": "tocarrier"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 150
+    assert plugin.carrier_cargo.get("steel") == 200
+
+    print("[PASS] CargoTransfer tocarrier adds to carrier cargo")
+
+
+def test_cargo_transfer_to_ship():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100, "steel": 50}
+
+    entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "$aluminium_name;", "Type_Localised": "Aluminium", "Count": 30, "Direction": "toship"},
+            {"Type": "$steel_name;", "Type_Localised": "Steel", "Count": 50, "Direction": "toship"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 70
+    assert "steel" not in plugin.carrier_cargo
+
+    print("[PASS] CargoTransfer toship removes from carrier cargo")
+
+
+def test_cargo_transfer_updates_construction_site():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 7000,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Test", "System")
+
+    mat = plugin.construction_sites[7000]["materials"][0]
+    assert mat["carrier"] == 100
+
+    transfer_entry = {
+        "event": "CargoTransfer",
+        "Transfers": [
+            {"Type": "$aluminium_name;", "Type_Localised": "Aluminium", "Count": 50, "Direction": "tocarrier"},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
+
+    mat = plugin.construction_sites[7000]["materials"][0]
+    assert plugin.carrier_cargo.get("aluminium") == 150
+    assert mat["carrier"] == 150
+
+    print("[PASS] CargoTransfer updates construction site carrier amounts")
+
+
+def test_carrier_cargo_persisted():
+    _reset_plugin()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        plugin.plugin_dir = tmpdir
+        plugin.carrier_cargo = {"aluminium": 500, "steel": 300}
+        plugin._save_data()
+
+        plugin.carrier_cargo.clear()
+        assert len(plugin.carrier_cargo) == 0
+
+        plugin._load_data()
+        assert plugin.carrier_cargo.get("aluminium") == 500
+        assert plugin.carrier_cargo.get("steel") == 300
+
+    print("[PASS] Carrier cargo is persisted across save/load")
+
+
+def test_docked_skips_reload_when_cargo_exists():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 999}
+
+    entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+    assert plugin.carrier_cargo.get("aluminium") == 999
+
+    print("[PASS] Docked event skips FCMaterials reload when carrier cargo exists")
+
+
 def test_dark_mode_toggle():
     _reset_plugin()
     plugin.dark_mode = False
@@ -742,6 +848,11 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
+    test_cargo_transfer_to_carrier()
+    test_cargo_transfer_to_ship()
+    test_cargo_transfer_updates_construction_site()
+    test_carrier_cargo_persisted()
+    test_docked_skips_reload_when_cargo_exists()
     test_dark_mode_toggle()
     test_dark_mode_button_label()
     test_save_and_load_data()

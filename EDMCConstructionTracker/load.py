@@ -76,6 +76,7 @@ def _save_data() -> None:
             "dark_mode": dark_mode,
             "selected_site_id": selected_site_id,
             "construction_sites": {str(k): v for k, v in construction_sites.items()},
+            "carrier_cargo": carrier_cargo,
         }
         with open(path, "w") as f:
             json.dump(save_obj, f, indent=2)
@@ -85,7 +86,7 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global dark_mode, selected_site_id, construction_sites
+    global dark_mode, selected_site_id, construction_sites, carrier_cargo
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
@@ -98,7 +99,10 @@ def _load_data() -> None:
         construction_sites.clear()
         for k, v in raw_sites.items():
             construction_sites[int(k)] = v
-        logger.info(f"Loaded {len(construction_sites)} construction sites from save")
+        saved_cargo = save_obj.get("carrier_cargo", {})
+        carrier_cargo.clear()
+        carrier_cargo.update(saved_cargo)
+        logger.info(f"Loaded {len(construction_sites)} construction sites, {len(carrier_cargo)} carrier cargo items from save")
     except Exception as e:
         logger.error(f"Error loading data: {e}")
 
@@ -121,8 +125,9 @@ def plugin_start3(plugin_dir_path: str) -> str:
     plugin_dir = plugin_dir_path
     _load_data()
     _init_journal_dir()
-    if journal_dir:
+    if journal_dir and not carrier_cargo:
         _load_carrier_cargo()
+        _update_carrier_amounts()
     logger.info(f"{plugin_name} v{plugin_version} started")
     return plugin_name
 
@@ -286,6 +291,29 @@ def _load_carrier_cargo() -> None:
 def _calculate_completion(required: int, provided: int, carrier: int) -> int:
     remaining = required - provided
     return max(0, remaining)
+
+
+def _process_cargo_transfer(entry: Dict[str, Any]) -> None:
+    global carrier_cargo
+    transfers = entry.get("Transfers", [])
+    for transfer in transfers:
+        raw_name = transfer.get("Type", "")
+        name_key = _normalize_name(raw_name)
+        count = _safe_int(transfer.get("Count", 0))
+        direction = transfer.get("Direction", "")
+
+        if not name_key or count <= 0:
+            continue
+
+        if direction == "tocarrier":
+            carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + count
+            logger.info(f"CargoTransfer: +{count} {name_key} to carrier (now {carrier_cargo[name_key]})")
+        elif direction == "toship":
+            current = carrier_cargo.get(name_key, 0)
+            carrier_cargo[name_key] = max(0, current - count)
+            if carrier_cargo[name_key] == 0:
+                del carrier_cargo[name_key]
+            logger.info(f"CargoTransfer: -{count} {name_key} from carrier (now {carrier_cargo.get(name_key, 0)})")
 
 
 def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], system: Optional[str]) -> None:
@@ -546,19 +574,27 @@ def journal_entry(
 
     event_name = entry.get("event", "")
 
-    if event_name in ("Docked", "Cargo", "CargoTransfer", "Market", "Location", "CarrierJump"):
-        _load_carrier_cargo()
+    if event_name == "CargoTransfer":
+        _process_cargo_transfer(entry)
         _update_carrier_amounts()
         _save_data()
         if selected_site_id:
             _update_display()
 
+    elif event_name in ("Docked", "Cargo", "Market", "Location", "CarrierJump"):
+        if not carrier_cargo:
+            _load_carrier_cargo()
+            _update_carrier_amounts()
+            _save_data()
+            if selected_site_id:
+                _update_display()
+
     elif event_name == "ColonisationConstructionDepot":
-        _load_carrier_cargo()
+        if not carrier_cargo:
+            _load_carrier_cargo()
         _process_construction_depot(entry, station, system)
 
     elif event_name == "ColonisationContribution":
-        _load_carrier_cargo()
         market_id = entry.get("MarketID")
         if market_id and market_id in construction_sites:
             contributions = entry.get("Contributions", [])
