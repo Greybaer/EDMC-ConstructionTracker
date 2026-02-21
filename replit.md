@@ -64,7 +64,7 @@ Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` an
 - `Docked`, `Market`, `Location`, `CarrierJump` — Loads FCMaterials.json as baseline only if no carrier cargo exists yet
 
 ### Completion Calculation
-`CompletionAmount = RequiredAmount - ProvidedAmount` — This tells the player how much more of each material is still needed. Carrier cargo is displayed as an informational column but does not factor into the remaining calculation.
+`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
 
 ### Journal Directory Detection
 Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.
@@ -87,6 +87,7 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - 37 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, name normalization, station name parsing, dark mode, persistence
 
 ## Recent Changes
+- 2026-02-21: Remaining formula changed to `required - (provided + carrier)`, green color requires both remaining=0 and provided>=required
 - 2026-02-21: Added ship cargo tracking from Cargo events (Inventory field and Cargo.json fallback)
 - 2026-02-21: Added sanity check: validates CargoTransfer amounts against ship cargo deltas, auto-corrects carrier cargo on mismatch
 - 2026-02-21: Carrier cargo now tracked incrementally via CargoTransfer events (tocarrier/toship)

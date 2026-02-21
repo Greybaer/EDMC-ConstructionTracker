@@ -291,7 +291,7 @@ def _load_carrier_cargo() -> None:
 
 
 def _calculate_completion(required: int, provided: int, carrier: int) -> int:
-    remaining = required - provided
+    remaining = required - (provided + carrier)
     return max(0, remaining)
 
 
@@ -539,7 +539,7 @@ def _update_display() -> None:
     else:
         progress_var.set(f"Progress: {progress:.1%}")
         total_materials = len(site_data["materials"])
-        completed_materials = sum(1 for m in site_data["materials"] if m["completion"] == 0)
+        completed_materials = sum(1 for m in site_data["materials"] if m["completion"] == 0 and m["provided"] >= m["required"])
         status_var.set(f"{completed_materials}/{total_materials} materials fulfilled")
 
     _render_materials(site_data["materials"])
@@ -644,7 +644,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     sep.grid(row=1, column=0, columnspan=len(headers), sticky=tk.EW, pady=2)
 
     for row_idx, mat in enumerate(materials, start=2):
-        fg_color = green if mat["completion"] == 0 else orange
+        fg_color = green if (mat["completion"] == 0 and mat["provided"] >= mat["required"]) else orange
 
         name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),
                             fg=fg_color, bg=bg, anchor=tk.W)
