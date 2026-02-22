@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
@@ -298,6 +299,12 @@ def _normalize_name(raw_name: str) -> str:
     return name
 
 
+def _split_camel_case(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r'(?<!^)(?=[A-Z])', ' ', text)
+
+
 def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
     global carrier_cargo, _fc_materials_mtime
     if not journal_dir:
@@ -570,7 +577,8 @@ def _update_display() -> None:
     progress = site_data["progress"]
 
     if type_value_label:
-        type_value_label.config(text=site_data.get("site_type") or "--")
+        raw_type = site_data.get("site_type") or ""
+        type_value_label.config(text=_split_camel_case(raw_type) if raw_type else "--")
     if system_value_label:
         system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--")
 
@@ -666,6 +674,27 @@ def _apply_theme() -> None:
     _apply_dropdown_theme()
 
 
+def _on_carrier_edit(name_key: str, var: 'tk.StringVar', row_idx: int,
+                     mat: Dict[str, Any]) -> None:
+    raw = var.get().strip()
+    try:
+        new_val = max(0, int(raw))
+    except (ValueError, TypeError):
+        return
+
+    if new_val == 0:
+        carrier_cargo.pop(name_key, None)
+    else:
+        carrier_cargo[name_key] = new_val
+
+    mat["carrier"] = new_val
+    mat["completion"] = _calculate_completion(mat["required"], mat["provided"], new_val)
+
+    _update_carrier_amounts()
+    _save_data()
+    _update_display()
+
+
 def _render_materials(materials: List[Dict[str, Any]]) -> None:
     if not material_frame:
         return
@@ -702,9 +731,23 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
                             fg=fg_color, bg=bg, anchor=tk.E)
         prov_lbl.grid(row=row_idx, column=2, sticky=tk.E, padx=(0, 8))
 
-        carr_lbl = tk.Label(material_frame, text=str(mat["carrier"]), font=("Helvetica", 8),
-                            fg=fg_color, bg=bg, anchor=tk.E)
-        carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
+        is_incomplete = mat["provided"] < mat["required"]
+        if is_incomplete:
+            carr_var = tk.StringVar(value=str(mat["carrier"]))
+            carr_entry = tk.Entry(material_frame, textvariable=carr_var,
+                                  font=("Helvetica", 8), width=6,
+                                  fg=fg_color, bg=bg,
+                                  insertbackground=fg_color, justify=tk.RIGHT,
+                                  relief=tk.FLAT, highlightthickness=1,
+                                  highlightcolor=fg_color, highlightbackground=fg_color)
+            carr_entry.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
+            name_key = mat.get("name_key", "")
+            carr_entry.bind("<Return>", lambda e, nk=name_key, v=carr_var, r=row_idx, m=mat: _on_carrier_edit(nk, v, r, m))
+            carr_entry.bind("<FocusOut>", lambda e, nk=name_key, v=carr_var, r=row_idx, m=mat: _on_carrier_edit(nk, v, r, m))
+        else:
+            carr_lbl = tk.Label(material_frame, text=str(mat["carrier"]), font=("Helvetica", 8),
+                                fg=fg_color, bg=bg, anchor=tk.E)
+            carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
 
         comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8),
                             fg=fg_color, bg=bg, anchor=tk.E)

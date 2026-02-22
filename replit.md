@@ -84,7 +84,7 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 40 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, dark mode, persistence
+- 44 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), dark mode, persistence
 
 ## Recent Changes
 - 2026-02-21: FCMaterials.json always reloaded on startup for fresh baseline, not relying on stale persisted data

@@ -1121,6 +1121,102 @@ def test_dark_mode_preference_saved():
     print("[PASS] Dark mode preference is saved on toggle")
 
 
+def test_split_camel_case():
+    assert plugin._split_camel_case("OrbitalStation") == "Orbital Station"
+    assert plugin._split_camel_case("CivilianOutpost") == "Civilian Outpost"
+    assert plugin._split_camel_case("Station") == "Station"
+    assert plugin._split_camel_case("") == ""
+    assert plugin._split_camel_case("ABC") == "A B C"
+    assert plugin._split_camel_case("MiningAndRefinery") == "Mining And Refinery"
+
+    print("[PASS] _split_camel_case splits on capital letters correctly")
+
+
+def test_carrier_edit_updates_cargo():
+    _reset_plugin()
+
+    plugin.carrier_cargo = {"steel": 50}
+    plugin.construction_sites[5555] = {
+        "display_name": "Test Site",
+        "market_id": 5555,
+        "progress": 0.5,
+        "complete": False,
+        "failed": False,
+        "materials": [
+            {
+                "name": "Steel",
+                "name_key": "steel",
+                "required": 300,
+                "provided": 100,
+                "carrier": 50,
+                "completion": 150,
+            }
+        ],
+        "station": "Test",
+        "system": "TestSys",
+        "site_type": "OrbitalStation",
+        "site_name": "Test Site",
+        "parsed_system": "TestSys",
+    }
+    plugin.selected_site_id = 5555
+
+    mat = plugin.construction_sites[5555]["materials"][0]
+    var = type('MockVar', (), {'get': lambda self: '200'})()
+    plugin._on_carrier_edit("steel", var, 2, mat)
+
+    assert plugin.carrier_cargo.get("steel") == 200
+    assert mat["carrier"] == 200
+    assert mat["completion"] == 0
+
+    print("[PASS] Manual carrier edit updates cargo and recalculates remaining")
+
+
+def test_carrier_edit_zero_removes_from_cargo():
+    _reset_plugin()
+
+    plugin.carrier_cargo = {"steel": 50}
+    mat = {
+        "name": "Steel",
+        "name_key": "steel",
+        "required": 300,
+        "provided": 100,
+        "carrier": 50,
+        "completion": 150,
+    }
+
+    var = type('MockVar', (), {'get': lambda self: '0'})()
+    plugin._on_carrier_edit("steel", var, 2, mat)
+
+    assert "steel" not in plugin.carrier_cargo
+    assert mat["carrier"] == 0
+    assert mat["completion"] == 200
+
+    print("[PASS] Carrier edit to zero removes commodity from carrier cargo")
+
+
+def test_carrier_edit_invalid_input_ignored():
+    _reset_plugin()
+
+    plugin.carrier_cargo = {"steel": 50}
+    mat = {
+        "name": "Steel",
+        "name_key": "steel",
+        "required": 300,
+        "provided": 100,
+        "carrier": 50,
+        "completion": 150,
+    }
+
+    var = type('MockVar', (), {'get': lambda self: 'abc'})()
+    plugin._on_carrier_edit("steel", var, 2, mat)
+
+    assert plugin.carrier_cargo.get("steel") == 50
+    assert mat["carrier"] == 50
+    assert mat["completion"] == 150
+
+    print("[PASS] Invalid carrier edit input is ignored")
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -1163,5 +1259,9 @@ if __name__ == "__main__":
     test_save_and_load_data()
     test_persistence_across_restart()
     test_dark_mode_preference_saved()
+    test_split_camel_case()
+    test_carrier_edit_updates_cargo()
+    test_carrier_edit_zero_removes_from_cargo()
+    test_carrier_edit_invalid_input_ignored()
 
     print(f"\nAll tests passed!")
