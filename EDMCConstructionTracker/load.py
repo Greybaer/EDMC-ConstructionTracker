@@ -39,7 +39,6 @@ site_var = None
 progress_var = None
 material_frame = None
 status_var = None
-dark_mode_btn = None
 header_label = None
 site_label = None
 type_label = None
@@ -153,17 +152,13 @@ def plugin_stop() -> None:
 
 def plugin_app(parent: tk.Frame) -> tk.Frame:
     global frame, site_selector, site_var, progress_var, material_frame, status_var
-    global dark_mode_btn, header_label, site_label, progress_label_widget, status_label_widget
+    global header_label, site_label, progress_label_widget, status_label_widget
     global type_label, type_value_label, system_label, system_value_label
 
     frame = tk.Frame(parent)
 
     header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
-    header_label.grid(row=0, column=0, columnspan=1, sticky=tk.W, pady=(0, 4))
-
-    dark_mode_btn = tk.Button(frame, text="Dark" if dark_mode else "Light",
-                               font=("Helvetica", 7), command=_toggle_dark_mode, width=4)
-    dark_mode_btn.grid(row=0, column=2, sticky=tk.E, pady=(0, 4), padx=(4, 0))
+    header_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
     site_label = tk.Label(frame, text="Site:")
     site_label.grid(row=1, column=0, sticky=tk.W)
@@ -203,6 +198,34 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     _schedule_fc_refresh()
 
     return frame
+
+
+def plugin_prefs(parent, cmdr: str, is_beta: bool) -> tk.Frame:
+    prefs_frame = tk.Frame(parent)
+
+    tk.Label(prefs_frame, text="Construction Tracker Settings",
+             font=("Helvetica", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+
+    tk.Label(prefs_frame, text="Theme:").grid(row=1, column=0, sticky=tk.W, padx=(0, 8))
+
+    global _prefs_theme_var
+    _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
+
+    tk.Radiobutton(prefs_frame, text="Light", variable=_prefs_theme_var,
+                   value="light").grid(row=1, column=1, sticky=tk.W)
+    tk.Radiobutton(prefs_frame, text="Dark", variable=_prefs_theme_var,
+                   value="dark").grid(row=2, column=1, sticky=tk.W)
+
+    return prefs_frame
+
+
+def prefs_changed(cmdr: str, is_beta: bool) -> None:
+    global _prefs_theme_var
+    if _prefs_theme_var:
+        _set_dark_mode(_prefs_theme_var.get() == "dark")
+
+
+_prefs_theme_var = None
 
 
 def _schedule_fc_refresh() -> None:
@@ -609,11 +632,9 @@ def _clear_material_display() -> None:
         widget.destroy()
 
 
-def _toggle_dark_mode() -> None:
+def _set_dark_mode(enabled: bool) -> None:
     global dark_mode
-    dark_mode = not dark_mode
-    if dark_mode_btn:
-        dark_mode_btn.config(text="Dark" if dark_mode else "Light")
+    dark_mode = enabled
     _apply_theme()
     _update_display()
     _save_data()
@@ -669,9 +690,6 @@ def _apply_theme() -> None:
 
     if status_label_widget:
         status_label_widget.config(bg=bg, fg=status_fg)
-
-    if dark_mode_btn:
-        dark_mode_btn.config(bg=btn_bg, fg=fg)
 
     if material_frame:
         material_frame.config(bg=bg)

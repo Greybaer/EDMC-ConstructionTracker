@@ -51,7 +51,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - Type: and System: info lines below the site selector showing parsed station name components
 - Grid-based material table showing Required, Provided, Carrier, and Remaining columns
 - Color coding: green for completed materials (remaining = 0), orange for incomplete materials
-- Dark/light mode toggle button that themes all widgets including headers, labels, buttons, material table, and combobox
+- Dark/light mode toggle via EDMC Settings tab (Construction Tracker) with Light/Dark radio buttons, themes all widgets including headers, labels, buttons, material table, and combobox
 
 ### Station Name Parsing
 Station names come in two formats, both parsed into three variables: `site_type`, `site_name`, and `system_name`:

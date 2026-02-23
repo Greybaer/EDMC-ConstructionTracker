@@ -966,27 +966,32 @@ def test_sanity_check_mixed_directions():
 def test_dark_mode_toggle():
     _reset_plugin()
     plugin.dark_mode = False
-    plugin._toggle_dark_mode()
+    plugin._set_dark_mode(True)
     assert plugin.dark_mode is True
-    plugin._toggle_dark_mode()
+    plugin._set_dark_mode(False)
     assert plugin.dark_mode is False
 
     print("[PASS] Dark mode toggle switches state")
 
 
-def test_dark_mode_button_label():
+def test_dark_mode_settings():
     _reset_plugin()
     plugin.dark_mode = False
-    plugin._toggle_dark_mode()
+    plugin._set_dark_mode(True)
     assert plugin.dark_mode is True
-    if plugin.dark_mode_btn:
-        assert plugin.dark_mode_btn.cget("text") == "Dark"
-    plugin._toggle_dark_mode()
-    assert plugin.dark_mode is False
-    if plugin.dark_mode_btn:
-        assert plugin.dark_mode_btn.cget("text") == "Light"
 
-    print("[PASS] Dark mode button label shows current mode")
+    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["dark_mode"] is True
+
+    plugin._set_dark_mode(False)
+    assert plugin.dark_mode is False
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["dark_mode"] is False
+
+    print("[PASS] Dark mode settings update and persist correctly")
 
 
 def test_journal_entry_cargo_event():
@@ -1114,7 +1119,7 @@ def test_persistence_across_restart():
 def test_dark_mode_preference_saved():
     _reset_plugin()
     plugin.dark_mode = False
-    plugin._toggle_dark_mode()
+    plugin._set_dark_mode(True)
     assert plugin.dark_mode is True
 
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
@@ -1123,12 +1128,12 @@ def test_dark_mode_preference_saved():
         saved = json.load(f)
     assert saved["dark_mode"] is True
 
-    plugin._toggle_dark_mode()
+    plugin._set_dark_mode(False)
     with open(save_path, "r") as f:
         saved = json.load(f)
     assert saved["dark_mode"] is False
 
-    print("[PASS] Dark mode preference is saved on toggle")
+    print("[PASS] Dark mode preference is saved via settings")
 
 
 def test_split_camel_case():
@@ -1265,7 +1270,7 @@ if __name__ == "__main__":
     test_sanity_check_multiple_transfers_same_commodity()
     test_sanity_check_mixed_directions()
     test_dark_mode_toggle()
-    test_dark_mode_button_label()
+    test_dark_mode_settings()
     test_save_and_load_data()
     test_persistence_across_restart()
     test_dark_mode_preference_saved()
