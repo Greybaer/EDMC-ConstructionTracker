@@ -218,18 +218,16 @@ def plugin_prefs(parent, cmdr: str, is_beta: bool):
         prefs_frame = tk.Frame(parent)
         Label = tk.Label
 
-    prefs_frame.columnconfigure(0, weight=1)
-
-    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(20, 8))
+    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(20, 0))
 
     global _prefs_theme_var, _prefs_hide_completed_var
     _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
 
     nb_rb = nb.Radiobutton if (HAS_NB and nb and hasattr(nb, 'Radiobutton')) else tk.Radiobutton
     nb_rb(prefs_frame, text="Light", variable=_prefs_theme_var,
-          value="light").grid(row=0, column=1, sticky=tk.W)
+          value="light").grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
     nb_rb(prefs_frame, text="Dark", variable=_prefs_theme_var,
-          value="dark").grid(row=1, column=1, sticky=tk.W)
+          value="dark").grid(row=1, column=1, sticky=tk.W, padx=(20, 0))
 
     sep = ttk.Separator(prefs_frame, orient=tk.HORIZONTAL)
     sep.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=8)
