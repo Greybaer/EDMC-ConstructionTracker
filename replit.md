@@ -54,7 +54,10 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - Dark/light mode toggle button that themes all widgets including headers, labels, buttons, material table, and combobox
 
 ### Station Name Parsing
-Station names come in the format `$EXT_PANEL_SiteType;SiteName - SystemName;` and are parsed into three variables: `site_type`, `site_name`, and `system_name`. The `$EXT_PANEL_` prefix and trailing semicolons are trimmed.
+Station names come in two formats, both parsed into three variables: `site_type`, `site_name`, and `system_name`:
+1. `$EXT_PANEL_SiteType;SiteName - SystemName;` — The `$EXT_PANEL_` prefix and trailing semicolons are trimmed, type extracted from first segment.
+2. `Type: SiteName - SystemName` — Plain text with colon separator, used when the game provides localized station names without the `$EXT_PANEL_` format. Type is extracted from before the colon.
+The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalStation" → "Orbital Station") for display.
 
 ### Journal Events Handled
 - `ColonisationConstructionDepot` — Updates construction site data with full material requirements

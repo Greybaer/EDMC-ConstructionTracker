@@ -316,6 +316,16 @@ def test_parse_station_name():
     assert site_name == "My Outpost"
     assert system_name == "Alpha Centauri"
 
+    site_type, site_name, system_name = plugin._parse_station_name("Orbital Construction Site: Kubokawa Sanctuary")
+    assert site_type == "Orbital Construction Site", f"Expected 'Orbital Construction Site', got '{site_type}'"
+    assert site_name == "Kubokawa Sanctuary", f"Expected 'Kubokawa Sanctuary', got '{site_name}'"
+    assert system_name == ""
+
+    site_type, site_name, system_name = plugin._parse_station_name("Surface Port: Dawes Landing - Sol")
+    assert site_type == "Surface Port", f"Expected 'Surface Port', got '{site_type}'"
+    assert site_name == "Dawes Landing", f"Expected 'Dawes Landing', got '{site_name}'"
+    assert system_name == "Sol", f"Expected 'Sol', got '{system_name}'"
+
     print("[PASS] Station name parsing into site type, site, and system")
 
 

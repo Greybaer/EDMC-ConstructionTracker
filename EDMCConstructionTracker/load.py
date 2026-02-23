@@ -261,6 +261,11 @@ def _parse_station_name(name: str) -> Tuple[str, str, str]:
     else:
         return site_type, site_name, system_name
 
+    if not site_type and ": " in remainder:
+        colon_parts = remainder.split(": ", 1)
+        site_type = colon_parts[0].strip()
+        remainder = colon_parts[1].strip()
+
     if " - " in remainder:
         site_parts = remainder.rsplit(" - ", 1)
         site_name = site_parts[0].strip()
