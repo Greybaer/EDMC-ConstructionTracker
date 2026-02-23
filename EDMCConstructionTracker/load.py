@@ -36,7 +36,6 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 dark_mode: bool = False
-opacity: float = 1.0
 _fc_materials_mtime: float = 0.0
 _fc_refresh_timer_id = None
 FC_REFRESH_INTERVAL_MS = 15 * 60 * 1000
@@ -87,7 +86,6 @@ def _save_data() -> None:
     try:
         save_obj = {
             "dark_mode": dark_mode,
-            "opacity": opacity,
             "selected_site_id": selected_site_id,
             "construction_sites": {str(k): v for k, v in construction_sites.items()},
             "carrier_cargo": carrier_cargo,
@@ -100,7 +98,7 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global dark_mode, opacity, selected_site_id, construction_sites, carrier_cargo
+    global dark_mode, selected_site_id, construction_sites, carrier_cargo
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
@@ -108,7 +106,6 @@ def _load_data() -> None:
         with open(path, "r") as f:
             save_obj = json.load(f)
         dark_mode = save_obj.get("dark_mode", False)
-        opacity = save_obj.get("opacity", 1.0)
         selected_site_id = save_obj.get("selected_site_id")
         raw_sites = save_obj.get("construction_sites", {})
         construction_sites.clear()
@@ -200,7 +197,6 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     material_frame.grid(row=6, column=0, columnspan=3, sticky=tk.W)
 
     _apply_theme()
-    _apply_opacity()
 
     if construction_sites:
         _update_site_selector()
