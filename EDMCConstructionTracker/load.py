@@ -218,7 +218,9 @@ def plugin_prefs(parent, cmdr: str, is_beta: bool):
         prefs_frame = tk.Frame(parent)
         Label = tk.Label
 
-    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
+    prefs_frame.columnconfigure(0, weight=1)
+
+    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(20, 8))
 
     global _prefs_theme_var, _prefs_hide_completed_var
     _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
@@ -229,10 +231,13 @@ def plugin_prefs(parent, cmdr: str, is_beta: bool):
     nb_rb(prefs_frame, text="Dark", variable=_prefs_theme_var,
           value="dark").grid(row=1, column=1, sticky=tk.W)
 
+    sep = ttk.Separator(prefs_frame, orient=tk.HORIZONTAL)
+    sep.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=8)
+
     _prefs_hide_completed_var = tk.IntVar(value=1 if hide_completed_materials else 0)
     nb_cb = nb.Checkbutton if (HAS_NB and nb and hasattr(nb, 'Checkbutton')) else tk.Checkbutton
     nb_cb(prefs_frame, text="Hide completed materials", variable=_prefs_hide_completed_var).grid(
-        row=2, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+        row=3, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
 
     return prefs_frame
 
