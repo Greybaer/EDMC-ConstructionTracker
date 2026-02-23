@@ -1,8 +1,27 @@
 # EDMC Construction Tracker Plugin
+   Commander GryBr (gb@gbsfabshop.com)
 
 An [Elite Dangerous Market Connector (EDMC)](https://github.com/EDCD/EDMarketConnector) plugin that tracks construction site material requirements for the System Colonisation feature in Elite Dangerous.
 
 When a player docks at a construction depot, the plugin monitors journal events to display material requirements, track deliveries, and show completion progress. It supports tracking multiple construction sites, reading Fleet Carrier cargo data via CAPI and FCMaterials.json, and provides a dark/light mode UI.
+
+## Why another Construction Material Tracker?
+
+TL;DR - I tried others, and had issues. So I created one that works better for me. I hope it does the same for you.
+
+Longer version - I tried a couple of different options. I settled on Architect Tracker for a while - overall it's pretty nice. In my experience though, it started losing material tracking accuracy, especially carrier materials. when no fix seemed forthcoming, I decided to take a crack at my own. Another minor annoyance for me was the implementation of the material window. It's bordered, white, and a bit obnoxious for my taste.
+
+This tracker lives in the actual EDMC window, making it small, lightweight, and easy to manage. Opacity and overall size are managed right from the EDMC settings. 
+
+I added two additional configuration settings in a custom tab:
+
+`1.` Light/Dark mode toggle. This affects only the Construction    Tracker data.
+
+`2.` An option to show or hide material deliveries that have been completed.
+
+My tracker uses multiple methods to sanity check the material amounts, focusing on trying to keep carrier cargo amounts correct. It does a better job than other trackers I've seen, but over time it still loses accuracy because of issues in the way the game handles cargo updates, and because ED only allows cargo queries every 15 minutes. So, as a last ditch fail safe, my tracker allows the uiser to edit the carrier cargo counts directly to keep them sane. It's a klufge, but it works.
+
+I'm a Swift programmer generally, and I haven't done much with Python since the early 2000s. I also had a fair amount of trouble navigating the EDMC plugin documentation, so I turned to Replit. Replit made the process pretty painless, and it turned out pretty much exactly what I wanted. I gave it the logic, and it did the grunt work. Color me impressed.
 
 ## Features
 
