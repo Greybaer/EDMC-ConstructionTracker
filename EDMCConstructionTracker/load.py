@@ -36,6 +36,7 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 dark_mode: bool = False
+hide_completed_materials: bool = False
 _fc_materials_mtime: float = 0.0
 _fc_refresh_timer_id = None
 FC_REFRESH_INTERVAL_MS = 15 * 60 * 1000
@@ -86,6 +87,7 @@ def _save_data() -> None:
     try:
         save_obj = {
             "dark_mode": dark_mode,
+            "hide_completed_materials": hide_completed_materials,
             "selected_site_id": selected_site_id,
             "construction_sites": {str(k): v for k, v in construction_sites.items()},
             "carrier_cargo": carrier_cargo,
@@ -98,7 +100,7 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global dark_mode, selected_site_id, construction_sites, carrier_cargo
+    global dark_mode, hide_completed_materials, selected_site_id, construction_sites, carrier_cargo
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
@@ -106,6 +108,7 @@ def _load_data() -> None:
         with open(path, "r") as f:
             save_obj = json.load(f)
         dark_mode = save_obj.get("dark_mode", False)
+        hide_completed_materials = save_obj.get("hide_completed_materials", False)
         selected_site_id = save_obj.get("selected_site_id")
         raw_sites = save_obj.get("construction_sites", {})
         construction_sites.clear()
@@ -217,7 +220,7 @@ def plugin_prefs(parent, cmdr: str, is_beta: bool):
 
     Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
 
-    global _prefs_theme_var
+    global _prefs_theme_var, _prefs_hide_completed_var
     _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
 
     nb_rb = nb.Radiobutton if (HAS_NB and nb and hasattr(nb, 'Radiobutton')) else tk.Radiobutton
@@ -226,16 +229,24 @@ def plugin_prefs(parent, cmdr: str, is_beta: bool):
     nb_rb(prefs_frame, text="Dark", variable=_prefs_theme_var,
           value="dark").grid(row=1, column=1, sticky=tk.W)
 
+    _prefs_hide_completed_var = tk.IntVar(value=1 if hide_completed_materials else 0)
+    nb_cb = nb.Checkbutton if (HAS_NB and nb and hasattr(nb, 'Checkbutton')) else tk.Checkbutton
+    nb_cb(prefs_frame, text="Hide completed materials", variable=_prefs_hide_completed_var).grid(
+        row=2, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+
     return prefs_frame
 
 
 def prefs_changed(cmdr: str, is_beta: bool) -> None:
-    global _prefs_theme_var
+    global _prefs_theme_var, _prefs_hide_completed_var
     if _prefs_theme_var:
         _set_dark_mode(_prefs_theme_var.get() == "dark")
+    if _prefs_hide_completed_var:
+        _set_hide_completed(_prefs_hide_completed_var.get() == 1)
 
 
 _prefs_theme_var = None
+_prefs_hide_completed_var = None
 
 
 def _schedule_fc_refresh() -> None:
@@ -650,6 +661,13 @@ def _set_dark_mode(enabled: bool) -> None:
     _save_data()
 
 
+def _set_hide_completed(enabled: bool) -> None:
+    global hide_completed_materials
+    hide_completed_materials = enabled
+    _update_display()
+    _save_data()
+
+
 def _apply_dropdown_theme() -> None:
     if not site_selector:
         return
@@ -749,7 +767,11 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     sep = ttk.Separator(material_frame, orient=tk.HORIZONTAL)
     sep.grid(row=1, column=0, columnspan=len(headers), sticky=tk.EW, pady=2)
 
-    for row_idx, mat in enumerate(materials, start=2):
+    display_materials = materials
+    if hide_completed_materials:
+        display_materials = [m for m in materials if not (m["completion"] == 0 and m["provided"] >= m["required"])]
+
+    for row_idx, mat in enumerate(display_materials, start=2):
         fg_color = green if (mat["completion"] == 0 and mat["provided"] >= mat["required"]) else orange
 
         name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),

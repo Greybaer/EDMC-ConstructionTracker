@@ -26,6 +26,7 @@ def _reset_plugin():
     plugin.pending_transfers.clear()
     plugin.selected_site_id = None
     plugin.dark_mode = False
+    plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
     plugin._fc_materials_mtime = 0.0
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
@@ -1232,6 +1233,64 @@ def test_carrier_edit_invalid_input_ignored():
     print("[PASS] Invalid carrier edit input is ignored")
 
 
+def test_hide_completed_materials():
+    _reset_plugin()
+    plugin.hide_completed_materials = False
+
+    plugin.construction_sites[7777] = {
+        "display_name": "Test Site",
+        "market_id": 7777,
+        "progress": 0.5,
+        "complete": False,
+        "failed": False,
+        "materials": [
+            {"name": "Steel", "name_key": "steel", "required": 100, "provided": 100, "carrier": 0, "completion": 0},
+            {"name": "Aluminium", "name_key": "aluminium", "required": 200, "provided": 50, "carrier": 0, "completion": 150},
+        ],
+        "system": "Sol",
+        "station": "Test",
+        "site_type": "Starport",
+        "site_name": "Test",
+        "parsed_system": "Sol",
+    }
+    plugin.selected_site_id = 7777
+
+    materials = plugin.construction_sites[7777]["materials"]
+    completed = [m for m in materials if m["completion"] == 0 and m["provided"] >= m["required"]]
+    incomplete = [m for m in materials if not (m["completion"] == 0 and m["provided"] >= m["required"])]
+    assert len(completed) == 1
+    assert len(incomplete) == 1
+    assert completed[0]["name"] == "Steel"
+    assert incomplete[0]["name"] == "Aluminium"
+
+    plugin._set_hide_completed(True)
+    assert plugin.hide_completed_materials is True
+
+    plugin._set_hide_completed(False)
+    assert plugin.hide_completed_materials is False
+
+    print("[PASS] Hide completed materials setting toggles correctly")
+
+
+def test_hide_completed_persisted():
+    _reset_plugin()
+    plugin.hide_completed_materials = False
+    plugin._set_hide_completed(True)
+
+    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["hide_completed_materials"] is True
+
+    plugin._set_hide_completed(False)
+    with open(save_path, "r") as f:
+        saved = json.load(f)
+    assert saved["hide_completed_materials"] is False
+
+    print("[PASS] Hide completed materials setting persists correctly")
+
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -1278,5 +1337,8 @@ if __name__ == "__main__":
     test_carrier_edit_updates_cargo()
     test_carrier_edit_zero_removes_from_cargo()
     test_carrier_edit_invalid_input_ignored()
+
+    test_hide_completed_materials()
+    test_hide_completed_persisted()
 
     print(f"\nAll tests passed!")
