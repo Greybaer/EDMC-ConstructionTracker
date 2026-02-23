@@ -16,6 +16,13 @@ except ImportError:
     tk = None
     ttk = None
 
+try:
+    import myNotebook as nb
+    HAS_NB = True
+except ImportError:
+    HAS_NB = False
+    nb = None
+
 plugin_name = "Construction Tracker"
 plugin_version = "1.3.0"
 
@@ -200,21 +207,24 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     return frame
 
 
-def plugin_prefs(parent, cmdr: str, is_beta: bool) -> tk.Frame:
-    prefs_frame = tk.Frame(parent)
+def plugin_prefs(parent, cmdr: str, is_beta: bool):
+    if HAS_NB and nb:
+        prefs_frame = nb.Frame(parent)
+        Label = nb.Label
+    else:
+        prefs_frame = tk.Frame(parent)
+        Label = tk.Label
 
-    tk.Label(prefs_frame, text="Construction Tracker Settings",
-             font=("Helvetica", 10, "bold")).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
-
-    tk.Label(prefs_frame, text="Theme:").grid(row=1, column=0, sticky=tk.W, padx=(0, 8))
+    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
 
     global _prefs_theme_var
     _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
 
-    tk.Radiobutton(prefs_frame, text="Light", variable=_prefs_theme_var,
-                   value="light").grid(row=1, column=1, sticky=tk.W)
-    tk.Radiobutton(prefs_frame, text="Dark", variable=_prefs_theme_var,
-                   value="dark").grid(row=2, column=1, sticky=tk.W)
+    nb_rb = nb.Radiobutton if (HAS_NB and nb and hasattr(nb, 'Radiobutton')) else tk.Radiobutton
+    nb_rb(prefs_frame, text="Light", variable=_prefs_theme_var,
+          value="light").grid(row=0, column=1, sticky=tk.W)
+    nb_rb(prefs_frame, text="Dark", variable=_prefs_theme_var,
+          value="dark").grid(row=1, column=1, sticky=tk.W)
 
     return prefs_frame
 
