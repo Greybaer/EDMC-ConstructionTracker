@@ -51,9 +51,9 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - Type: and System: info lines below the site selector showing parsed station name components
 - Grid-based material table showing Required, Provided, Carrier, and Remaining columns
 - Color coding: green for completed materials (remaining = 0), orange for incomplete materials
-- Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`):
-  - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black
-  - **Dark (1) / Transparent (2) themes**: Labels are orange (#ff8c00); Type/System value strings are white
+- Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`), refreshed on every `_update_display()` call:
+  - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black; Progress value is black
+  - **Dark (1) / Transparent (2) themes**: Labels are orange (#ff8c00); Type/System value strings are white; Progress value is white
 - EDMC's native theme module handles widget backgrounds automatically; plugin registers widgets via `_register_with_theme()`
 - "Hide completed materials" checkbox in EDMC Settings tab (Construction Tracker) with data persistence
 

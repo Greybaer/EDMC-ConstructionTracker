@@ -60,6 +60,7 @@ type_value_label = None
 system_label = None
 system_value_label = None
 progress_label_widget = None
+progress_value_widget = None
 status_label_widget = None
 
 LABEL_FG_DEFAULT = "#000000"
@@ -158,7 +159,7 @@ def plugin_stop() -> None:
 
 def plugin_app(parent: tk.Frame) -> tk.Frame:
     global frame, site_selector, site_var, progress_var, material_frame, status_var
-    global header_label, site_label, progress_label_widget, status_label_widget
+    global header_label, site_label, progress_label_widget, progress_value_widget, status_label_widget
     global type_label, type_value_label, system_label, system_value_label
 
     frame = tk.Frame(parent)
@@ -184,9 +185,11 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     system_value_label = tk.Label(frame, text="--", fg=_value_fg())
     system_value_label.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
 
-    progress_var = tk.StringVar(value="Progress: --")
-    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=_label_fg())
-    progress_label_widget.grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
+    progress_label_widget = tk.Label(frame, text="Progress:", font=("Helvetica", 9), fg=_label_fg())
+    progress_label_widget.grid(row=4, column=0, sticky=tk.W, pady=(4, 2))
+    progress_var = tk.StringVar(value="--")
+    progress_value_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=_value_fg())
+    progress_value_widget.grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
@@ -591,12 +594,40 @@ def _update_site_selector() -> None:
     _register_with_theme(site_selector)
 
 
+def _refresh_label_colors() -> None:
+    label_color = _label_fg()
+    value_color = _value_fg()
+    if header_label:
+        header_label.config(fg=label_color)
+    if site_label:
+        site_label.config(fg=label_color)
+    if site_selector:
+        try:
+            site_selector.config(fg=label_color)
+        except Exception:
+            pass
+    if type_label:
+        type_label.config(fg=label_color)
+    if type_value_label:
+        type_value_label.config(fg=value_color)
+    if system_label:
+        system_label.config(fg=label_color)
+    if system_value_label:
+        system_value_label.config(fg=value_color)
+    if progress_label_widget:
+        progress_label_widget.config(fg=label_color)
+    if progress_value_widget:
+        progress_value_widget.config(fg=value_color)
+
+
 def _update_display() -> None:
     if not progress_var or not material_frame or not status_var:
         return
 
+    _refresh_label_colors()
+
     if not selected_site_id or selected_site_id not in construction_sites:
-        progress_var.set("Progress: --")
+        progress_var.set("--")
         status_var.set("Waiting for construction site data...")
         _clear_material_display()
         return
@@ -606,18 +637,18 @@ def _update_display() -> None:
 
     if type_value_label:
         raw_type = site_data.get("site_type") or ""
-        type_value_label.config(text=_split_camel_case(raw_type) if raw_type else "--", fg=_value_fg())
+        type_value_label.config(text=_split_camel_case(raw_type) if raw_type else "--")
     if system_value_label:
-        system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--", fg=_value_fg())
+        system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--")
 
     if site_data["complete"]:
-        progress_var.set(f"Progress: COMPLETE")
+        progress_var.set("COMPLETE")
         status_var.set("Construction finished!")
     elif site_data["failed"]:
-        progress_var.set(f"Progress: FAILED")
+        progress_var.set("FAILED")
         status_var.set("Construction failed.")
     else:
-        progress_var.set(f"Progress: {progress:.1%}")
+        progress_var.set(f"{progress:.1%}")
         total_materials = len(site_data["materials"])
         completed_materials = sum(1 for m in site_data["materials"] if m["completion"] == 0 and m["provided"] >= m["required"])
         status_var.set(f"{completed_materials}/{total_materials} materials fulfilled")
