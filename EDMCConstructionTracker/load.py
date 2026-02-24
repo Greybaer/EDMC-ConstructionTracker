@@ -62,7 +62,10 @@ system_value_label = None
 progress_label_widget = None
 status_label_widget = None
 
-LABEL_FG = "#ff8c00"
+LABEL_FG_DEFAULT = "#000000"
+LABEL_FG_DARK = "#ff8c00"
+VALUE_FG_DEFAULT = "#000000"
+VALUE_FG_DARK = "#ffffff"
 COMPLETE_GREEN = "#4ec94e"
 INCOMPLETE_ORANGE = "#ff8c00"
 
@@ -160,10 +163,10 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
 
     frame = tk.Frame(parent)
 
-    header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"), fg=LABEL_FG)
+    header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"), fg=_label_fg())
     header_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
-    site_label = tk.Label(frame, text="Site:", fg=LABEL_FG)
+    site_label = tk.Label(frame, text="Site:", fg=_label_fg())
     site_label.grid(row=1, column=0, sticky=tk.W)
     site_var = tk.StringVar(value="No sites tracked")
     site_selector = tk.OptionMenu(frame, site_var, "No sites tracked")
@@ -171,18 +174,18 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
     site_var.trace_add("write", _on_site_var_changed)
 
-    type_label = tk.Label(frame, text="Type:", fg=LABEL_FG)
+    type_label = tk.Label(frame, text="Type:", fg=_label_fg())
     type_label.grid(row=2, column=0, sticky=tk.W)
-    type_value_label = tk.Label(frame, text="--")
+    type_value_label = tk.Label(frame, text="--", fg=_value_fg())
     type_value_label.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
 
-    system_label = tk.Label(frame, text="System:", fg=LABEL_FG)
+    system_label = tk.Label(frame, text="System:", fg=_label_fg())
     system_label.grid(row=3, column=0, sticky=tk.W)
-    system_value_label = tk.Label(frame, text="--")
+    system_value_label = tk.Label(frame, text="--", fg=_value_fg())
     system_value_label.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
 
     progress_var = tk.StringVar(value="Progress: --")
-    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=LABEL_FG)
+    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=_label_fg())
     progress_label_widget.grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
@@ -603,9 +606,9 @@ def _update_display() -> None:
 
     if type_value_label:
         raw_type = site_data.get("site_type") or ""
-        type_value_label.config(text=_split_camel_case(raw_type) if raw_type else "--")
+        type_value_label.config(text=_split_camel_case(raw_type) if raw_type else "--", fg=_value_fg())
     if system_value_label:
-        system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--")
+        system_value_label.config(text=site_data.get("parsed_system") or site_data.get("system") or "--", fg=_value_fg())
 
     if site_data["complete"]:
         progress_var.set(f"Progress: COMPLETE")
@@ -627,6 +630,23 @@ def _clear_material_display() -> None:
         return
     for widget in material_frame.winfo_children():
         widget.destroy()
+
+
+def _is_dark_theme() -> bool:
+    try:
+        import config as edmc_config
+        theme_val = edmc_config.get_int('theme')
+        return theme_val in (1, 2)
+    except Exception:
+        return False
+
+
+def _label_fg() -> str:
+    return LABEL_FG_DARK if _is_dark_theme() else LABEL_FG_DEFAULT
+
+
+def _value_fg() -> str:
+    return VALUE_FG_DARK if _is_dark_theme() else VALUE_FG_DEFAULT
 
 
 def _register_with_theme(widget) -> None:
@@ -676,7 +696,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
     for col, header_text in enumerate(headers):
         lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
-                       anchor=tk.W, fg=LABEL_FG)
+                       anchor=tk.W, fg=_label_fg())
         lbl.grid(row=0, column=col, sticky=tk.W, padx=(0, 8))
 
     sep = ttk.Separator(material_frame, orient=tk.HORIZONTAL)

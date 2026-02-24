@@ -42,16 +42,20 @@ The `_normalize_name()` function handles all commodity name formats consistently
 
 ### Data Persistence
 - **File**: `construction_tracker_data.json` stored in the plugin directory
-- **Contents**: Construction sites, selected site ID, dark mode preference, and carrier cargo inventory
+- **Contents**: Construction sites, selected site ID, hide-completed preference, and carrier cargo inventory
 - **Strategy**: Loaded on startup, saved on every state change. This ensures data survives EDMC restarts.
 
 ### UI Architecture
 - Built with **tkinter** (not ttk for key widgets, to enable full theming)
-- `tk.OptionMenu` for site selection dropdown (replaced ttk.Combobox for better dark/light mode support)
+- `tk.OptionMenu` for site selection dropdown
 - Type: and System: info lines below the site selector showing parsed station name components
 - Grid-based material table showing Required, Provided, Carrier, and Remaining columns
 - Color coding: green for completed materials (remaining = 0), orange for incomplete materials
-- Dark/light mode toggle via EDMC Settings tab (Construction Tracker) with Light/Dark radio buttons, themes all widgets including headers, labels, buttons, material table, and combobox
+- Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`):
+  - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black
+  - **Dark (1) / Transparent (2) themes**: Labels are orange (#ff8c00); Type/System value strings are white
+- EDMC's native theme module handles widget backgrounds automatically; plugin registers widgets via `_register_with_theme()`
+- "Hide completed materials" checkbox in EDMC Settings tab (Construction Tracker) with data persistence
 
 ### Station Name Parsing
 Station names come in two formats, both parsed into three variables: `site_type`, `site_name`, and `system_name`:
@@ -87,9 +91,11 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 44 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), dark mode, persistence
+- 43 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
 
 ## Recent Changes
+- 2026-02-24: Theme-aware text colors: Default theme uses black labels and value text; Dark/Transparent uses orange labels and white Type/System values
+- 2026-02-24: Removed custom dark/light mode toggle, integrated with EDMC's native theme system via config.get_int('theme')
 - 2026-02-21: FCMaterials.json always reloaded on startup for fresh baseline, not relying on stale persisted data
 - 2026-02-21: Docked/Market/Location/CarrierJump events reload FCMaterials.json if file modified (tracks mtime)
 - 2026-02-21: Added 15-minute periodic timer to check for FCMaterials.json changes and refresh carrier cargo
