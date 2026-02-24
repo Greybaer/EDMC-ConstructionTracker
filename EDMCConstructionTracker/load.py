@@ -124,8 +124,8 @@ def _init_journal_dir() -> None:
     if journal_dir:
         return
     try:
-        import config as edmc_config
-        journal_dir = edmc_config.get_str('journaldir') or edmc_config.default_journal_dir
+        from config import config as edmc_cfg
+        journal_dir = edmc_cfg.get_str('journaldir') or str(edmc_cfg.default_journal_dir_path)
         if journal_dir:
             logger.info(f"Journal directory from EDMC config: {journal_dir}")
     except Exception:
@@ -664,9 +664,16 @@ def _clear_material_display() -> None:
 
 
 def _is_dark_theme() -> bool:
+    if HAS_THEME and edmc_theme:
+        try:
+            active = edmc_theme.theme.active
+            if active is not None:
+                return active in (1, 2)
+        except Exception:
+            pass
     try:
-        import config as edmc_config
-        theme_val = edmc_config.get_int('theme')
+        from config import config as edmc_cfg
+        theme_val = edmc_cfg.get_int('theme')
         return theme_val in (1, 2)
     except Exception:
         return False
