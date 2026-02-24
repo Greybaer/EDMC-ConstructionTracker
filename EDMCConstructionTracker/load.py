@@ -23,6 +23,13 @@ except ImportError:
     HAS_NB = False
     nb = None
 
+try:
+    import theme as edmc_theme
+    HAS_THEME = True
+except ImportError:
+    HAS_THEME = False
+    edmc_theme = None
+
 plugin_name = "Construction Tracker"
 plugin_version = "1.3.0"
 
@@ -35,7 +42,6 @@ construction_sites: Dict[int, Dict[str, Any]] = {}
 selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
-dark_mode: bool = False
 hide_completed_materials: bool = False
 _fc_materials_mtime: float = 0.0
 _fc_refresh_timer_id = None
@@ -56,23 +62,9 @@ system_value_label = None
 progress_label_widget = None
 status_label_widget = None
 
-DARK_BG = "#1e1e1e"
-DARK_FG = "#d4d4d4"
-DARK_HEADER_FG = "#ff8c00"
-DARK_LABEL_FG = "#ff8c00"
-DARK_GREEN = "#4ec94e"
-DARK_ORANGE = "#ff8c00"
-DARK_STATUS_FG = "#888888"
-DARK_BTN_BG = "#333333"
-DARK_MENU_ACTIVE = "#3a3a3a"
-LIGHT_BG = "SystemButtonFace"
-LIGHT_FG = "black"
-LIGHT_HEADER_FG = "#e67300"
-LIGHT_LABEL_FG = "#e67300"
-LIGHT_GREEN = "green"
-LIGHT_ORANGE = "#e67300"
-LIGHT_STATUS_FG = "gray"
-LIGHT_MENU_ACTIVE = "#e0e0e0"
+LABEL_FG = "#ff8c00"
+COMPLETE_GREEN = "#4ec94e"
+INCOMPLETE_ORANGE = "#ff8c00"
 
 SAVE_FILE = "construction_tracker_data.json"
 
@@ -89,7 +81,6 @@ def _save_data() -> None:
         return
     try:
         save_obj = {
-            "dark_mode": dark_mode,
             "hide_completed_materials": hide_completed_materials,
             "selected_site_id": selected_site_id,
             "construction_sites": {str(k): v for k, v in construction_sites.items()},
@@ -103,14 +94,13 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global dark_mode, hide_completed_materials, selected_site_id, construction_sites, carrier_cargo
+    global hide_completed_materials, selected_site_id, construction_sites, carrier_cargo
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
     try:
         with open(path, "r") as f:
             save_obj = json.load(f)
-        dark_mode = save_obj.get("dark_mode", False)
         hide_completed_materials = save_obj.get("hide_completed_materials", False)
         selected_site_id = save_obj.get("selected_site_id")
         raw_sites = save_obj.get("construction_sites", {})
@@ -170,10 +160,10 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
 
     frame = tk.Frame(parent)
 
-    header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"))
+    header_label = tk.Label(frame, text="Construction Tracker", font=("Helvetica", 10, "bold"), fg=LABEL_FG)
     header_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
-    site_label = tk.Label(frame, text="Site:")
+    site_label = tk.Label(frame, text="Site:", fg=LABEL_FG)
     site_label.grid(row=1, column=0, sticky=tk.W)
     site_var = tk.StringVar(value="No sites tracked")
     site_selector = tk.OptionMenu(frame, site_var, "No sites tracked")
@@ -181,28 +171,26 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     site_selector.grid(row=1, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
     site_var.trace_add("write", _on_site_var_changed)
 
-    type_label = tk.Label(frame, text="Type:")
+    type_label = tk.Label(frame, text="Type:", fg=LABEL_FG)
     type_label.grid(row=2, column=0, sticky=tk.W)
     type_value_label = tk.Label(frame, text="--")
     type_value_label.grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
 
-    system_label = tk.Label(frame, text="System:")
+    system_label = tk.Label(frame, text="System:", fg=LABEL_FG)
     system_label.grid(row=3, column=0, sticky=tk.W)
     system_value_label = tk.Label(frame, text="--")
     system_value_label.grid(row=3, column=1, columnspan=2, sticky=tk.W, padx=(4, 0))
 
     progress_var = tk.StringVar(value="Progress: --")
-    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9))
+    progress_label_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=LABEL_FG)
     progress_label_widget.grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(4, 2))
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
-    status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8), fg="gray")
+    status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
     status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
 
     material_frame = tk.Frame(frame)
     material_frame.grid(row=6, column=0, columnspan=3, sticky=tk.W)
-
-    _apply_theme()
 
     if construction_sites:
         _update_site_selector()
@@ -216,42 +204,24 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
 def plugin_prefs(parent, cmdr: str, is_beta: bool):
     if HAS_NB and nb:
         prefs_frame = nb.Frame(parent)
-        Label = nb.Label
     else:
         prefs_frame = tk.Frame(parent)
-        Label = tk.Label
 
-    Label(prefs_frame, text="Theme:").grid(row=0, column=0, sticky=tk.W, padx=(20, 0))
-
-    global _prefs_theme_var, _prefs_hide_completed_var
-    _prefs_theme_var = tk.StringVar(value="dark" if dark_mode else "light")
-
-    nb_rb = nb.Radiobutton if (HAS_NB and nb and hasattr(nb, 'Radiobutton')) else tk.Radiobutton
-    nb_rb(prefs_frame, text="Light", variable=_prefs_theme_var,
-          value="light").grid(row=0, column=1, sticky=tk.W, padx=(20, 0))
-    nb_rb(prefs_frame, text="Dark", variable=_prefs_theme_var,
-          value="dark").grid(row=1, column=1, sticky=tk.W, padx=(20, 0))
-
-    sep = ttk.Separator(prefs_frame, orient=tk.HORIZONTAL)
-    sep.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=8)
-
+    global _prefs_hide_completed_var
     _prefs_hide_completed_var = tk.IntVar(value=1 if hide_completed_materials else 0)
     nb_cb = nb.Checkbutton if (HAS_NB and nb and hasattr(nb, 'Checkbutton')) else tk.Checkbutton
     nb_cb(prefs_frame, text="Hide completed materials", variable=_prefs_hide_completed_var).grid(
-        row=3, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
+        row=0, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
 
     return prefs_frame
 
 
 def prefs_changed(cmdr: str, is_beta: bool) -> None:
-    global _prefs_theme_var, _prefs_hide_completed_var
-    if _prefs_theme_var:
-        _set_dark_mode(_prefs_theme_var.get() == "dark")
+    global _prefs_hide_completed_var
     if _prefs_hide_completed_var:
         _set_hide_completed(_prefs_hide_completed_var.get() == 1)
 
 
-_prefs_theme_var = None
 _prefs_hide_completed_var = None
 
 
@@ -615,7 +585,7 @@ def _update_site_selector() -> None:
     elif names:
         site_var.set(names[0])
 
-    _apply_dropdown_theme()
+    _register_with_theme(site_selector)
 
 
 def _update_display() -> None:
@@ -659,12 +629,13 @@ def _clear_material_display() -> None:
         widget.destroy()
 
 
-def _set_dark_mode(enabled: bool) -> None:
-    global dark_mode
-    dark_mode = enabled
-    _apply_theme()
-    _update_display()
-    _save_data()
+def _register_with_theme(widget) -> None:
+    if HAS_THEME and edmc_theme:
+        try:
+            edmc_theme.theme.register(widget)
+            edmc_theme.theme.apply(widget.winfo_toplevel())
+        except Exception:
+            pass
 
 
 def _set_hide_completed(enabled: bool) -> None:
@@ -673,63 +644,6 @@ def _set_hide_completed(enabled: bool) -> None:
     _update_display()
     _save_data()
 
-
-def _apply_dropdown_theme() -> None:
-    if not site_selector:
-        return
-
-    bg = DARK_BG if dark_mode else LIGHT_BG
-    fg = DARK_FG if dark_mode else LIGHT_FG
-    active_bg = DARK_MENU_ACTIVE if dark_mode else LIGHT_MENU_ACTIVE
-
-    try:
-        site_selector.config(bg=bg, fg=fg, activebackground=active_bg,
-                             activeforeground=fg, highlightthickness=0,
-                             relief=tk.FLAT if dark_mode else tk.RAISED)
-        menu = site_selector["menu"]
-        menu.config(bg=bg, fg=fg, activebackground=active_bg, activeforeground=fg)
-    except Exception:
-        pass
-
-
-def _apply_theme() -> None:
-    if not frame:
-        return
-
-    bg = DARK_BG if dark_mode else LIGHT_BG
-    fg = DARK_FG if dark_mode else LIGHT_FG
-    header_fg = DARK_HEADER_FG if dark_mode else LIGHT_HEADER_FG
-    label_fg = DARK_LABEL_FG if dark_mode else LIGHT_LABEL_FG
-    status_fg = DARK_STATUS_FG if dark_mode else LIGHT_STATUS_FG
-    btn_bg = DARK_BTN_BG if dark_mode else LIGHT_BG
-
-    frame.config(bg=bg)
-
-    if header_label:
-        header_label.config(bg=bg, fg=header_fg)
-
-    if site_label:
-        site_label.config(bg=bg, fg=label_fg)
-
-    if type_label:
-        type_label.config(bg=bg, fg=label_fg)
-    if type_value_label:
-        type_value_label.config(bg=bg, fg=fg)
-    if system_label:
-        system_label.config(bg=bg, fg=label_fg)
-    if system_value_label:
-        system_value_label.config(bg=bg, fg=fg)
-
-    if progress_label_widget:
-        progress_label_widget.config(bg=bg, fg=label_fg)
-
-    if status_label_widget:
-        status_label_widget.config(bg=bg, fg=status_fg)
-
-    if material_frame:
-        material_frame.config(bg=bg)
-
-    _apply_dropdown_theme()
 
 
 def _on_carrier_edit(name_key: str, var: 'tk.StringVar', row_idx: int,
@@ -759,17 +673,10 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
 
     _clear_material_display()
 
-    bg = DARK_BG if dark_mode else LIGHT_BG
-    fg = DARK_FG if dark_mode else LIGHT_FG
-    green = DARK_GREEN if dark_mode else LIGHT_GREEN
-    orange = DARK_ORANGE if dark_mode else LIGHT_ORANGE
-    material_frame.config(bg=bg)
-
-    label_fg = DARK_LABEL_FG if dark_mode else LIGHT_LABEL_FG
     headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
     for col, header_text in enumerate(headers):
         lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
-                       anchor=tk.W, bg=bg, fg=label_fg)
+                       anchor=tk.W, fg=LABEL_FG)
         lbl.grid(row=0, column=col, sticky=tk.W, padx=(0, 8))
 
     sep = ttk.Separator(material_frame, orient=tk.HORIZONTAL)
@@ -780,18 +687,18 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
         display_materials = [m for m in materials if not (m["completion"] == 0 and m["provided"] >= m["required"])]
 
     for row_idx, mat in enumerate(display_materials, start=2):
-        fg_color = green if (mat["completion"] == 0 and mat["provided"] >= mat["required"]) else orange
+        fg_color = COMPLETE_GREEN if (mat["completion"] == 0 and mat["provided"] >= mat["required"]) else INCOMPLETE_ORANGE
 
         name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),
-                            fg=fg_color, bg=bg, anchor=tk.W)
+                            fg=fg_color, anchor=tk.W)
         name_lbl.grid(row=row_idx, column=0, sticky=tk.W, padx=(0, 8))
 
         req_lbl = tk.Label(material_frame, text=str(mat["required"]), font=("Helvetica", 8),
-                           fg=fg_color, bg=bg, anchor=tk.E)
+                           fg=fg_color, anchor=tk.E)
         req_lbl.grid(row=row_idx, column=1, sticky=tk.E, padx=(0, 8))
 
         prov_lbl = tk.Label(material_frame, text=str(mat["provided"]), font=("Helvetica", 8),
-                            fg=fg_color, bg=bg, anchor=tk.E)
+                            fg=fg_color, anchor=tk.E)
         prov_lbl.grid(row=row_idx, column=2, sticky=tk.E, padx=(0, 8))
 
         is_incomplete = mat["provided"] < mat["required"]
@@ -799,7 +706,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
             carr_var = tk.StringVar(value=str(mat["carrier"]))
             carr_entry = tk.Entry(material_frame, textvariable=carr_var,
                                   font=("Helvetica", 8), width=6,
-                                  fg=fg_color, bg=bg,
+                                  fg=fg_color,
                                   insertbackground=fg_color, justify=tk.RIGHT,
                                   relief=tk.FLAT, highlightthickness=1,
                                   highlightcolor=fg_color, highlightbackground=fg_color)
@@ -809,12 +716,14 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
             carr_entry.bind("<FocusOut>", lambda e, nk=name_key, v=carr_var, r=row_idx, m=mat: _on_carrier_edit(nk, v, r, m))
         else:
             carr_lbl = tk.Label(material_frame, text=str(mat["carrier"]), font=("Helvetica", 8),
-                                fg=fg_color, bg=bg, anchor=tk.E)
+                                fg=fg_color, anchor=tk.E)
             carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
 
         comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8),
-                            fg=fg_color, bg=bg, anchor=tk.E)
+                            fg=fg_color, anchor=tk.E)
         comp_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
+
+    _register_with_theme(material_frame)
 
 
 def journal_entry(

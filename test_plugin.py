@@ -25,7 +25,6 @@ def _reset_plugin():
     plugin.ship_cargo.clear()
     plugin.pending_transfers.clear()
     plugin.selected_site_id = None
-    plugin.dark_mode = False
     plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
     plugin._fc_materials_mtime = 0.0
@@ -717,7 +716,6 @@ def test_docked_skips_reload_if_not_modified():
 def test_startup_always_reloads_fc_materials():
     with tempfile.TemporaryDirectory() as tmpdir:
         save_data = {
-            "dark_mode": False,
             "selected_site_id": None,
             "construction_sites": {},
             "carrier_cargo": {"aluminium": 500, "steel": 200},
@@ -964,35 +962,6 @@ def test_sanity_check_mixed_directions():
     print("[PASS] Sanity check handles mixed tocarrier/toship transfers correctly")
 
 
-def test_dark_mode_toggle():
-    _reset_plugin()
-    plugin.dark_mode = False
-    plugin._set_dark_mode(True)
-    assert plugin.dark_mode is True
-    plugin._set_dark_mode(False)
-    assert plugin.dark_mode is False
-
-    print("[PASS] Dark mode toggle switches state")
-
-
-def test_dark_mode_settings():
-    _reset_plugin()
-    plugin.dark_mode = False
-    plugin._set_dark_mode(True)
-    assert plugin.dark_mode is True
-
-    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
-    with open(save_path, "r") as f:
-        saved = json.load(f)
-    assert saved["dark_mode"] is True
-
-    plugin._set_dark_mode(False)
-    assert plugin.dark_mode is False
-    with open(save_path, "r") as f:
-        saved = json.load(f)
-    assert saved["dark_mode"] is False
-
-    print("[PASS] Dark mode settings update and persist correctly")
 
 
 def test_journal_entry_cargo_event():
@@ -1026,7 +995,7 @@ def test_journal_entry_cargo_event():
 def test_save_and_load_data():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100}
-    plugin.dark_mode = True
+    plugin.hide_completed_materials = True
 
     entry = {
         "event": "ColonisationConstructionDepot",
@@ -1051,18 +1020,18 @@ def test_save_and_load_data():
 
     with open(save_path, "r") as f:
         saved = json.load(f)
-    assert saved["dark_mode"] is True
+    assert saved["hide_completed_materials"] is True
     assert saved["selected_site_id"] == 8888
     assert "8888" in saved["construction_sites"]
     assert saved["construction_sites"]["8888"]["display_name"] == "Persist Station"
 
     plugin.construction_sites.clear()
     plugin.selected_site_id = None
-    plugin.dark_mode = False
+    plugin.hide_completed_materials = False
 
     plugin._load_data()
 
-    assert plugin.dark_mode is True
+    assert plugin.hide_completed_materials is True
     assert plugin.selected_site_id == 8888
     assert 8888 in plugin.construction_sites
     site = plugin.construction_sites[8888]
@@ -1079,7 +1048,7 @@ def test_save_and_load_data():
 def test_persistence_across_restart():
     _reset_plugin()
     plugin.carrier_cargo = {"steel": 75}
-    plugin.dark_mode = True
+    plugin.hide_completed_materials = True
 
     entry = {
         "event": "ColonisationConstructionDepot",
@@ -1103,12 +1072,12 @@ def test_persistence_across_restart():
 
     plugin.construction_sites.clear()
     plugin.selected_site_id = None
-    plugin.dark_mode = False
+    plugin.hide_completed_materials = False
 
     result = plugin.plugin_start3(_test_tmpdir)
     assert result == "Construction Tracker"
 
-    assert plugin.dark_mode is True
+    assert plugin.hide_completed_materials is True
     assert plugin.selected_site_id == 4444
     assert 4444 in plugin.construction_sites
     site = plugin.construction_sites[4444]
@@ -1116,25 +1085,6 @@ def test_persistence_across_restart():
 
     print("[PASS] Data persists across plugin stop/start cycle")
 
-
-def test_dark_mode_preference_saved():
-    _reset_plugin()
-    plugin.dark_mode = False
-    plugin._set_dark_mode(True)
-    assert plugin.dark_mode is True
-
-    save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
-    assert os.path.exists(save_path)
-    with open(save_path, "r") as f:
-        saved = json.load(f)
-    assert saved["dark_mode"] is True
-
-    plugin._set_dark_mode(False)
-    with open(save_path, "r") as f:
-        saved = json.load(f)
-    assert saved["dark_mode"] is False
-
-    print("[PASS] Dark mode preference is saved via settings")
 
 
 def test_split_camel_case():
@@ -1328,11 +1278,8 @@ if __name__ == "__main__":
     test_sanity_check_no_correction_needed()
     test_sanity_check_multiple_transfers_same_commodity()
     test_sanity_check_mixed_directions()
-    test_dark_mode_toggle()
-    test_dark_mode_settings()
     test_save_and_load_data()
     test_persistence_across_restart()
-    test_dark_mode_preference_saved()
     test_split_camel_case()
     test_carrier_edit_updates_cargo()
     test_carrier_edit_zero_removes_from_cargo()
