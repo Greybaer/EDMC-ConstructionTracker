@@ -58,7 +58,8 @@ status_label_widget = None
 
 DARK_BG = "#1e1e1e"
 DARK_FG = "#d4d4d4"
-DARK_HEADER_FG = "#ffffff"
+DARK_HEADER_FG = "#ff8c00"
+DARK_LABEL_FG = "#ff8c00"
 DARK_GREEN = "#4ec94e"
 DARK_ORANGE = "#ff8c00"
 DARK_STATUS_FG = "#888888"
@@ -66,6 +67,8 @@ DARK_BTN_BG = "#333333"
 DARK_MENU_ACTIVE = "#3a3a3a"
 LIGHT_BG = "SystemButtonFace"
 LIGHT_FG = "black"
+LIGHT_HEADER_FG = "#e67300"
+LIGHT_LABEL_FG = "#e67300"
 LIGHT_GREEN = "green"
 LIGHT_ORANGE = "#e67300"
 LIGHT_STATUS_FG = "gray"
@@ -695,7 +698,8 @@ def _apply_theme() -> None:
 
     bg = DARK_BG if dark_mode else LIGHT_BG
     fg = DARK_FG if dark_mode else LIGHT_FG
-    header_fg = DARK_HEADER_FG if dark_mode else LIGHT_FG
+    header_fg = DARK_HEADER_FG if dark_mode else LIGHT_HEADER_FG
+    label_fg = DARK_LABEL_FG if dark_mode else LIGHT_LABEL_FG
     status_fg = DARK_STATUS_FG if dark_mode else LIGHT_STATUS_FG
     btn_bg = DARK_BTN_BG if dark_mode else LIGHT_BG
 
@@ -705,19 +709,19 @@ def _apply_theme() -> None:
         header_label.config(bg=bg, fg=header_fg)
 
     if site_label:
-        site_label.config(bg=bg, fg=fg)
+        site_label.config(bg=bg, fg=label_fg)
 
     if type_label:
-        type_label.config(bg=bg, fg=fg)
+        type_label.config(bg=bg, fg=label_fg)
     if type_value_label:
         type_value_label.config(bg=bg, fg=fg)
     if system_label:
-        system_label.config(bg=bg, fg=fg)
+        system_label.config(bg=bg, fg=label_fg)
     if system_value_label:
         system_value_label.config(bg=bg, fg=fg)
 
     if progress_label_widget:
-        progress_label_widget.config(bg=bg, fg=fg)
+        progress_label_widget.config(bg=bg, fg=label_fg)
 
     if status_label_widget:
         status_label_widget.config(bg=bg, fg=status_fg)
@@ -761,10 +765,11 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
     orange = DARK_ORANGE if dark_mode else LIGHT_ORANGE
     material_frame.config(bg=bg)
 
+    label_fg = DARK_LABEL_FG if dark_mode else LIGHT_LABEL_FG
     headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
     for col, header_text in enumerate(headers):
         lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
-                       anchor=tk.W, bg=bg, fg=fg)
+                       anchor=tk.W, bg=bg, fg=label_fg)
         lbl.grid(row=0, column=col, sticky=tk.W, padx=(0, 8))
 
     sep = ttk.Separator(material_frame, orient=tk.HORIZONTAL)
