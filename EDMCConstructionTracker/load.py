@@ -858,7 +858,22 @@ def capi_fleetcarrier(data) -> None:
         return
 
     logger.info(f"CAPI fleetcarrier called, top-level keys: {list(data.keys()) if hasattr(data, 'keys') else type(data)}")
-    _process_capi_carrier_cargo(data)
+
+    pre_capi_total = sum(carrier_cargo.values())
+
+    capi_cargo = _parse_capi_carrier_cargo(data)
+    capi_total = sum(capi_cargo.values())
+
+    if capi_total > pre_capi_total and pre_capi_total > 0:
+        logger.warning(
+            f"CAPI sanity check: CAPI total ({capi_total}) > pre-update total ({pre_capi_total}). "
+            f"Discarding CAPI cargo data to prevent drift."
+        )
+        return
+
+    carrier_cargo.clear()
+    carrier_cargo.update(capi_cargo)
+
     _update_carrier_amounts()
     _save_data()
     if selected_site_id:
@@ -866,10 +881,8 @@ def capi_fleetcarrier(data) -> None:
     logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items: {dict(carrier_cargo)}")
 
 
-def _process_capi_carrier_cargo(data) -> None:
-    global carrier_cargo
-
-    carrier_cargo.clear()
+def _parse_capi_carrier_cargo(data) -> Dict[str, int]:
+    result: Dict[str, int] = {}
 
     cargo_section = data.get("cargo", [])
     logger.info(f"CAPI cargo type: {type(cargo_section).__name__}, value preview: {str(cargo_section)[:500]}")
@@ -885,7 +898,7 @@ def _process_capi_carrier_cargo(data) -> None:
         name_key = _normalize_name(name_raw)
         qty = _safe_int(item.get("quantity", 0) or item.get("qty", 0))
         if name_key and qty > 0:
-            carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + qty
+            result[name_key] = result.get(name_key, 0) + qty
 
     orders = data.get("orders", {})
     if isinstance(orders, dict):
@@ -898,8 +911,8 @@ def _process_capi_carrier_cargo(data) -> None:
                 name_raw = item.get("commodity", "") or item.get("name", "")
                 name_key = _normalize_name(name_raw)
                 outstanding = _safe_int(item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0))
-                if name_key and outstanding > 0 and name_key not in carrier_cargo:
-                    carrier_cargo[name_key] = outstanding
+                if name_key and outstanding > 0 and name_key not in result:
+                    result[name_key] = outstanding
 
     market = data.get("market", {})
     if isinstance(market, dict) and not orders:
@@ -910,7 +923,8 @@ def _process_capi_carrier_cargo(data) -> None:
             name_raw = item.get("commodity", "") or item.get("name", "")
             name_key = _normalize_name(name_raw)
             qty = _safe_int(item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0))
-            if name_key and qty > 0 and name_key not in carrier_cargo:
-                carrier_cargo[name_key] = qty
+            if name_key and qty > 0 and name_key not in result:
+                result[name_key] = qty
 
-    logger.info(f"CAPI carrier cargo parsed: {dict(carrier_cargo)}")
+    logger.info(f"CAPI carrier cargo parsed: {dict(result)}")
+    return result

@@ -564,6 +564,61 @@ def test_capi_fleetcarrier_empty_data():
     print("[PASS] CAPI fleetcarrier handles empty/null data")
 
 
+def test_capi_sanity_check_discards_higher_total():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100, "steel": 50}
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 200},
+            {"commodity": "Steel", "quantity": 100},
+        ],
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 100
+    assert plugin.carrier_cargo.get("steel") == 50
+
+    print("[PASS] CAPI sanity check discards data when CAPI total exceeds current total")
+
+
+def test_capi_sanity_check_accepts_lower_or_equal_total():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 200, "steel": 150}
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 100},
+            {"commodity": "Steel", "quantity": 80},
+        ],
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 100
+    assert plugin.carrier_cargo.get("steel") == 80
+
+    print("[PASS] CAPI sanity check accepts data when CAPI total is lower or equal")
+
+
+def test_capi_sanity_check_allows_when_carrier_empty():
+    _reset_plugin()
+    plugin.carrier_cargo = {}
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 500},
+        ],
+        "orders": {"commodities": {"sales": {}, "purchases": {}}},
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 500
+
+    print("[PASS] CAPI sanity check allows data when carrier cargo is empty")
+
+
 def test_cargo_transfer_to_carrier():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100}
@@ -1264,6 +1319,9 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
+    test_capi_sanity_check_discards_higher_total()
+    test_capi_sanity_check_accepts_lower_or_equal_total()
+    test_capi_sanity_check_allows_when_carrier_empty()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
