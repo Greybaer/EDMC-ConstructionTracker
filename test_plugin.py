@@ -236,6 +236,120 @@ def test_contribution_updates():
     print("[PASS] ColonisationContribution updates ProvidedAmount and recalculates CompletionAmount")
 
 
+def test_site_removed_when_fully_delivered():
+    _reset_plugin()
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 556,
+        "ConstructionProgress": 0.9,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 80,
+                "Payment": 1000,
+            }
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Depot", "System")
+    assert 556 in plugin.construction_sites
+    assert plugin.selected_site_id == 556
+
+    contrib_entry = {
+        "event": "ColonisationContribution",
+        "MarketID": 556,
+        "Contributions": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "Amount": 20,
+            }
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "System", "Depot", contrib_entry, state)
+
+    assert 556 not in plugin.construction_sites
+    assert plugin.selected_site_id is None
+
+    print("[PASS] Construction site removed when all materials fully delivered")
+
+
+def test_site_removed_selects_next_site():
+    _reset_plugin()
+
+    depot1 = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 557,
+        "ConstructionProgress": 0.5,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$steel_name;", "Name_Localised": "Steel",
+             "RequiredAmount": 200, "ProvidedAmount": 50, "Payment": 500},
+        ],
+    }
+    plugin._process_construction_depot(depot1, "Site A", "System")
+
+    depot2 = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 558,
+        "ConstructionProgress": 0.9,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 100, "ProvidedAmount": 90, "Payment": 1000},
+        ],
+    }
+    plugin._process_construction_depot(depot2, "Site B", "System")
+    assert plugin.selected_site_id == 558
+
+    contrib_entry = {
+        "event": "ColonisationContribution",
+        "MarketID": 558,
+        "Contributions": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium", "Amount": 10},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "System", "Site B", contrib_entry, state)
+
+    assert 558 not in plugin.construction_sites
+    assert 557 in plugin.construction_sites
+    assert plugin.selected_site_id == 557
+
+    print("[PASS] Removing completed site selects next available site")
+
+
+def test_depot_event_with_all_provided_removes_site():
+    _reset_plugin()
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 559,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 100, "ProvidedAmount": 100, "Payment": 1000},
+            {"Name": "$steel_name;", "Name_Localised": "Steel",
+             "RequiredAmount": 200, "ProvidedAmount": 200, "Payment": 500},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "System", "Station", depot_entry, state)
+
+    assert 559 not in plugin.construction_sites
+
+    print("[PASS] Depot event with all materials already provided removes site immediately")
+
+
 def test_fc_materials_loading():
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
@@ -1382,6 +1496,9 @@ if __name__ == "__main__":
     test_multiple_sites()
     test_carrier_cargo_update()
     test_contribution_updates()
+    test_site_removed_when_fully_delivered()
+    test_site_removed_selects_next_site()
+    test_depot_event_with_all_provided_removes_site()
     test_fc_materials_loading()
     test_journal_entry_cargo_event()
     test_docked_event_loads_carrier_cargo()

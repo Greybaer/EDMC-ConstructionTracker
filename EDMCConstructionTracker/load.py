@@ -569,6 +569,31 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
     logger.info(f"Processed construction depot: {display_name} ({progress:.1%})")
 
 
+def _check_site_complete(market_id: int) -> bool:
+    global selected_site_id
+    if market_id not in construction_sites:
+        return False
+    site_data = construction_sites[market_id]
+    materials = site_data.get("materials", [])
+    if not materials:
+        return False
+    all_delivered = all(mat["provided"] >= mat["required"] for mat in materials)
+    if all_delivered:
+        display_name = site_data.get("display_name", f"Site #{market_id}")
+        logger.info(f"All materials delivered for {display_name}, removing site")
+        del construction_sites[market_id]
+        if selected_site_id == market_id:
+            if construction_sites:
+                selected_site_id = next(iter(construction_sites))
+            else:
+                selected_site_id = None
+        _update_site_selector()
+        _update_display()
+        _save_data()
+        return True
+    return False
+
+
 def _update_carrier_amounts() -> None:
     for mid, site_data in construction_sites.items():
         for mat in site_data["materials"]:
@@ -844,6 +869,7 @@ def journal_entry(
         if not carrier_cargo:
             _load_carrier_cargo()
         _process_construction_depot(entry, station, system)
+        _check_site_complete(entry.get("MarketID"))
 
     elif event_name == "ColonisationContribution":
         market_id = entry.get("MarketID")
@@ -857,12 +883,13 @@ def journal_entry(
                     if mat["name_key"] == name_key:
                         mat["provided"] += amount
                         mat["completion"] = _calculate_completion(
-                            mat["required"], mat["provided"], mat["carrier"]
+                            mat["required"], mat["provided"], mat["carrier"], mat.get("ship", 0)
                         )
                         break
-            _save_data()
-            if market_id == selected_site_id:
-                _update_display()
+            if not _check_site_complete(market_id):
+                _save_data()
+                if market_id == selected_site_id:
+                    _update_display()
 
 
 def capi_fleetcarrier(data) -> None:
