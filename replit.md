@@ -25,14 +25,12 @@ The plugin follows EDMC's plugin contract:
 ### Data Model
 - **Construction Sites**: Stored in an in-memory dictionary keyed by `MarketID` (integer). Each site contains construction progress, resource requirements (required, provided, carrier amounts), station metadata, and parsed station name components (site_type, site_name, parsed_system).
 - **Carrier Cargo**: A dictionary mapping resource names (lowercase, normalized) to quantities. Baseline set once at login from FCMaterials.json (via `LoadGame` event) or CAPI `/fleetcarrier` endpoint. After the initial baseline, only updated incrementally via `CargoTransfer` journal events. Validated against ship cargo deltas for accuracy. Persisted to disk across EDMC restarts.
-- **Ship Cargo**: A dictionary tracking the player's current ship inventory, updated from Cargo events (Inventory field or Cargo.json file). Used as ground truth to validate CargoTransfer amounts.
-- **Pending Transfers**: A list buffering CargoTransfer events awaiting validation by the next Cargo event.
 - **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
 
 ### Fleet Carrier Cargo Sources (in priority order)
 1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries.
 2. **FCMaterials.json** (startup + login): Loaded on plugin startup and on `LoadGame` journal event to establish a fresh baseline. Uses `Stock` field from `Items[]`.
-3. **CargoTransfer journal events** (incremental updates): Tracks `tocarrier` and `toship` transfers in real-time, adjusting the carrier cargo baseline up or down. Each transfer is buffered as a pending validation until the next Cargo event confirms the ship inventory changed by the expected amount. If there's a mismatch, carrier cargo is auto-corrected based on the actual ship delta.
+3. **CargoTransfer journal events** (incremental updates): Tracks `tocarrier` and `toship` transfers in real-time, adjusting the carrier cargo baseline up or down. Transfers are trusted directly without validation.
 
 ### Name Normalization
 The `_normalize_name()` function handles all commodity name formats consistently:
@@ -67,8 +65,8 @@ The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalSt
 - `LoadGame` — Reloads carrier cargo from FCMaterials.json to establish a fresh baseline at login
 - `ColonisationConstructionDepot` — Updates construction site data with full material requirements
 - `ColonisationContribution` — Updates material delivery counts in real-time
-- `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), buffers transfer for validation
-- `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
+- `Docked` — When docking at a FleetCarrier (`StationType == "FleetCarrier"`), reloads carrier cargo from FCMaterials.json for a fresh baseline
+- `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), trusted directly without validation
 
 ### Completion Calculation
 `CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
@@ -91,9 +89,11 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 40 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
+- 33 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, FCMaterials loading, LoadGame carrier reload, Docked at FleetCarrier reloads, Docked at non-FleetCarrier does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
 
 ## Recent Changes
+- 2026-03-01: Removed sanity check (ship cargo tracking, pending transfers, Cargo event validation) — CargoTransfer events trusted directly
+- 2026-03-01: Added Docked at FleetCarrier → reload FCMaterials.json for fresh baseline; non-FleetCarrier docking ignored
 - 2026-03-01: Carrier cargo now loaded once at login (LoadGame event) then updated only via CargoTransfer; removed periodic timer and Docked/Market/Location/CarrierJump reload triggers to reduce drift
 - 2026-02-24: Theme-aware text colors: Default theme uses black labels and value text; Dark/Transparent uses orange labels and white Type/System values
 - 2026-02-24: Removed custom dark/light mode toggle, integrated with EDMC's native theme system via config.get_int('theme')

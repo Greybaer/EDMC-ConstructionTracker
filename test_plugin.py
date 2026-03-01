@@ -22,8 +22,6 @@ _test_tmpdir = tempfile.mkdtemp()
 def _reset_plugin():
     plugin.construction_sites.clear()
     plugin.carrier_cargo.clear()
-    plugin.ship_cargo.clear()
-    plugin.pending_transfers.clear()
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
@@ -348,7 +346,7 @@ def test_display_name_with_ext_panel():
     print("[PASS] Display name extracts site name from $EXT_PANEL_ format")
 
 
-def test_docked_event_does_not_reload_carrier_cargo():
+def test_docked_at_fleet_carrier_reloads_cargo():
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
@@ -364,14 +362,42 @@ def test_docked_event_does_not_reload_carrier_cargo():
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo = {"steel": 500}
 
-        docked_entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+        docked_entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999,
+                        "StationType": "FleetCarrier"}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", docked_entry, state)
+
+        assert plugin.carrier_cargo.get("aluminium") == 200
+        assert "steel" not in plugin.carrier_cargo
+
+    print("[PASS] Docked at FleetCarrier reloads carrier cargo from FCMaterials.json")
+
+
+def test_docked_at_station_does_not_reload_cargo():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "$aluminium_name;", "Stock": 200, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
+            json.dump(fc_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo = {"steel": 500}
+
+        docked_entry = {"event": "Docked", "StationName": "Test Station", "MarketID": 99999,
+                        "StationType": "Coriolis"}
         state = {"JournalDir": tmpdir}
         plugin.journal_entry("Cmdr", False, "Sys", "Stn", docked_entry, state)
 
         assert plugin.carrier_cargo.get("steel") == 500
         assert "aluminium" not in plugin.carrier_cargo
 
-    print("[PASS] Docked event does not reload carrier cargo")
+    print("[PASS] Docked at non-FleetCarrier does not reload carrier cargo")
 
 
 def test_capi_fleetcarrier_cargo_list_format():
@@ -678,248 +704,10 @@ def test_startup_always_reloads_fc_materials():
     print("[PASS] Startup always reloads FCMaterials.json over persisted data")
 
 
-def test_cargo_event_updates_ship_cargo():
-    _reset_plugin()
-
-    entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "gold", "Count": 50, "Stolen": 0},
-            {"Name": "silver", "Count": 30, "Stolen": 0},
-            {"Name": "gold", "MissionID": 12345, "Count": 10, "Stolen": 0},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
-
-    assert plugin.ship_cargo.get("gold") == 60
-    assert plugin.ship_cargo.get("silver") == 30
-
-    print("[PASS] Cargo event updates ship cargo from Inventory")
-
-
-def test_cargo_event_reads_cargo_json():
-    _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cargo_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "Cargo",
-            "Vessel": "Ship",
-            "Inventory": [
-                {"Name": "aluminium", "Count": 100, "Stolen": 0},
-            ],
-        }
-        with open(os.path.join(tmpdir, "Cargo.json"), "w") as f:
-            json.dump(cargo_data, f)
-
-        plugin.journal_dir = tmpdir
-
-        entry = {"event": "Cargo", "Vessel": "Ship", "Count": 100}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
-
-        assert plugin.ship_cargo.get("aluminium") == 100
-
-    print("[PASS] Cargo event reads Cargo.json when Inventory not in event")
-
-
-def test_sanity_check_corrects_tocarrier():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 200}
-
-    transfer_entry = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 150
-    assert len(plugin.pending_transfers) == 1
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 170, "Stolen": 0},
-        ],
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 130
-    assert len(plugin.pending_transfers) == 0
-
-    print("[PASS] Sanity check corrects tocarrier when ship delta mismatches")
-
-
-def test_sanity_check_corrects_toship():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 50}
-
-    transfer_entry = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 30, "Direction": "toship"},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 70
-    assert len(plugin.pending_transfers) == 1
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 70, "Stolen": 0},
-        ],
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 80
-    assert len(plugin.pending_transfers) == 0
-
-    print("[PASS] Sanity check corrects toship when ship delta mismatches")
-
-
-def test_sanity_check_no_correction_needed():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 200}
-
-    transfer_entry = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 150
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 150, "Stolen": 0},
-        ],
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 150
-    assert len(plugin.pending_transfers) == 0
-
-    print("[PASS] Sanity check makes no correction when transfer is accurate")
-
-
-def test_sanity_check_multiple_transfers_same_commodity():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 300}
-
-    transfer1 = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
-        ],
-    }
-    transfer2 = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 30, "Direction": "tocarrier"},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer1, state)
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer2, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 180
-    assert len(plugin.pending_transfers) == 2
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 220, "Stolen": 0},
-        ],
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 180
-    assert len(plugin.pending_transfers) == 0
-
-    print("[PASS] Sanity check handles multiple transfers of same commodity correctly")
-
-
-def test_sanity_check_mixed_directions():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 200}
-    plugin.ship_cargo = {"aluminium": 100}
-
-    transfer1 = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 50, "Direction": "tocarrier"},
-        ],
-    }
-    transfer2 = {
-        "event": "CargoTransfer",
-        "Transfers": [
-            {"Type": "aluminium", "Count": 20, "Direction": "toship"},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer1, state)
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", transfer2, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 230
-    assert len(plugin.pending_transfers) == 2
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 70, "Stolen": 0},
-        ],
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.carrier_cargo.get("aluminium") == 230
-    assert len(plugin.pending_transfers) == 0
-
-    print("[PASS] Sanity check handles mixed tocarrier/toship transfers correctly")
 
 
 
 
-def test_journal_entry_cargo_event():
-    _reset_plugin()
-    plugin.carrier_cargo = {"gold": 50}
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Count": 2,
-        "Inventory": [
-            {"Name": "gold", "Count": 10},
-            {"Name": "silver", "Count": 5},
-        ],
-    }
-    state = {"JournalDir": _test_tmpdir}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    assert plugin.ship_cargo.get("gold") == 10
-    assert plugin.ship_cargo.get("silver") == 5
-    assert plugin.carrier_cargo.get("gold") == 50
-
-    print("[PASS] journal_entry handles Cargo event")
 
 
 def test_save_and_load_data():
@@ -1185,8 +973,8 @@ if __name__ == "__main__":
     test_carrier_cargo_update()
     test_contribution_updates()
     test_fc_materials_loading()
-    test_journal_entry_cargo_event()
-    test_docked_event_does_not_reload_carrier_cargo()
+    test_docked_at_fleet_carrier_reloads_cargo()
+    test_docked_at_station_does_not_reload_cargo()
     test_capi_fleetcarrier_cargo_list_format()
     test_capi_fleetcarrier_cargo_dict_format()
     test_capi_fleetcarrier_cargo_duplicate_entries()
@@ -1199,13 +987,6 @@ if __name__ == "__main__":
     test_carrier_cargo_persisted()
     test_loadgame_reloads_carrier_cargo()
     test_startup_always_reloads_fc_materials()
-    test_cargo_event_updates_ship_cargo()
-    test_cargo_event_reads_cargo_json()
-    test_sanity_check_corrects_tocarrier()
-    test_sanity_check_corrects_toship()
-    test_sanity_check_no_correction_needed()
-    test_sanity_check_multiple_transfers_same_commodity()
-    test_sanity_check_mixed_directions()
     test_save_and_load_data()
     test_persistence_across_restart()
     test_split_camel_case()
