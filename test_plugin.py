@@ -27,7 +27,6 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
-    plugin._fc_materials_mtime = 0.0
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
         os.remove(save_path)
@@ -349,65 +348,30 @@ def test_display_name_with_ext_panel():
     print("[PASS] Display name extracts site name from $EXT_PANEL_ format")
 
 
-def test_docked_event_loads_carrier_cargo():
+def test_docked_event_does_not_reload_carrier_cargo():
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
             "event": "FCMaterials",
-            "MarketID": 3700005632,
-            "CarrierName": "TEST CARRIER",
-            "CarrierID": "T7T-TTT",
             "Items": [
-                {"id": 1, "Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-                 "Stock": 200, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-                {"id": 2, "Name": "$steel_name;", "Name_Localised": "Steel",
-                 "Stock": 150, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 1, "Name": "$aluminium_name;", "Stock": 200, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
             ],
         }
         with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
             json.dump(fc_data, f)
 
         plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
+        plugin.carrier_cargo = {"steel": 500}
 
-        docked_entry = {
-            "event": "Docked",
-            "StationName": "Test Station",
-            "StarSystem": "Test System",
-            "MarketID": 99999,
-        }
+        docked_entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
         state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Test System", "Test Station", docked_entry, state)
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", docked_entry, state)
 
-        assert plugin.carrier_cargo.get("aluminium") == 200
-        assert plugin.carrier_cargo.get("steel") == 150
+        assert plugin.carrier_cargo.get("steel") == 500
+        assert "aluminium" not in plugin.carrier_cargo
 
-    print("[PASS] Docked event triggers carrier cargo reload")
-
-
-def test_market_event_loads_carrier_cargo():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "steel", "Name_Localised": "Steel",
-                 "Stock": 300, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
-
-        market_entry = {"event": "Market", "MarketID": 99999, "StationName": "Test"}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", market_entry, state)
-
-        assert plugin.carrier_cargo.get("steel") == 300
-
-    print("[PASS] Market event triggers carrier cargo reload")
+    print("[PASS] Docked event does not reload carrier cargo")
 
 
 def test_capi_fleetcarrier_cargo_list_format():
@@ -657,7 +621,7 @@ def test_carrier_cargo_persisted():
     print("[PASS] Carrier cargo is persisted across save/load")
 
 
-def test_docked_reloads_if_file_modified():
+def test_loadgame_reloads_carrier_cargo():
     _reset_plugin()
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
@@ -673,44 +637,15 @@ def test_docked_reloads_if_file_modified():
 
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = 0.0
 
-        entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+        entry = {"event": "LoadGame", "Commander": "TestCmdr"}
         state = {"JournalDir": tmpdir}
         plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
 
         assert plugin.carrier_cargo.get("gold") == 200
         assert "aluminium" not in plugin.carrier_cargo
 
-    print("[PASS] Docked event reloads FCMaterials.json when file has been modified")
-
-
-def test_docked_skips_reload_if_not_modified():
-    _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_path = os.path.join(tmpdir, "FCMaterials.json")
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Stock": 200, "Demand": 0,
-                 "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(fc_path, "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
-
-        entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
-
-        assert plugin.carrier_cargo.get("aluminium") == 999
-
-    print("[PASS] Docked event skips reload when FCMaterials.json not modified")
+    print("[PASS] LoadGame event reloads carrier cargo from FCMaterials.json")
 
 
 def test_startup_always_reloads_fc_materials():
@@ -965,29 +900,24 @@ def test_sanity_check_mixed_directions():
 
 
 def test_journal_entry_cargo_event():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "MarketID": 3700005632,
-            "CarrierName": "TEST CARRIER",
-            "CarrierID": "T7T-TTT",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Name_Localised": "Gold",
-                 "Stock": 50, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
-            json.dump(fc_data, f)
+    _reset_plugin()
+    plugin.carrier_cargo = {"gold": 50}
 
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Count": 2,
+        "Inventory": [
+            {"Name": "gold", "Count": 10},
+            {"Name": "silver", "Count": 5},
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
 
-        cargo_entry = {"event": "Cargo", "Vessel": "Ship", "Count": 1}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-        assert plugin.carrier_cargo.get("gold") == 50
+    assert plugin.ship_cargo.get("gold") == 10
+    assert plugin.ship_cargo.get("silver") == 5
+    assert plugin.carrier_cargo.get("gold") == 50
 
     print("[PASS] journal_entry handles Cargo event")
 
@@ -1256,8 +1186,7 @@ if __name__ == "__main__":
     test_contribution_updates()
     test_fc_materials_loading()
     test_journal_entry_cargo_event()
-    test_docked_event_loads_carrier_cargo()
-    test_market_event_loads_carrier_cargo()
+    test_docked_event_does_not_reload_carrier_cargo()
     test_capi_fleetcarrier_cargo_list_format()
     test_capi_fleetcarrier_cargo_dict_format()
     test_capi_fleetcarrier_cargo_duplicate_entries()
@@ -1268,8 +1197,7 @@ if __name__ == "__main__":
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
     test_carrier_cargo_persisted()
-    test_docked_reloads_if_file_modified()
-    test_docked_skips_reload_if_not_modified()
+    test_loadgame_reloads_carrier_cargo()
     test_startup_always_reloads_fc_materials()
     test_cargo_event_updates_ship_cargo()
     test_cargo_event_reads_cargo_json()
