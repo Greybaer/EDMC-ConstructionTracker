@@ -372,8 +372,8 @@ def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
         return False
 
 
-def _calculate_completion(required: int, provided: int, carrier: int) -> int:
-    remaining = required - (provided + carrier)
+def _calculate_completion(required: int, provided: int, carrier: int, ship: int = 0) -> int:
+    remaining = required - (provided + carrier + ship)
     return max(0, remaining)
 
 
@@ -534,7 +534,8 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
         required_amount = res.get("RequiredAmount", 0)
         provided_amount = res.get("ProvidedAmount", 0)
         carrier_amount = carrier_cargo.get(name_key, 0)
-        completion_amount = _calculate_completion(required_amount, provided_amount, carrier_amount)
+        ship_amount = ship_cargo.get(name_key, 0)
+        completion_amount = _calculate_completion(required_amount, provided_amount, carrier_amount, ship_amount)
 
         materials.append({
             "name": name_localised,
@@ -542,6 +543,7 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
             "required": required_amount,
             "provided": provided_amount,
             "carrier": carrier_amount,
+            "ship": ship_amount,
             "completion": completion_amount,
         })
 
@@ -571,8 +573,10 @@ def _update_carrier_amounts() -> None:
     for mid, site_data in construction_sites.items():
         for mat in site_data["materials"]:
             carrier_amount = carrier_cargo.get(mat["name_key"], 0)
+            ship_amount = ship_cargo.get(mat["name_key"], 0)
             mat["carrier"] = carrier_amount
-            mat["completion"] = _calculate_completion(mat["required"], mat["provided"], carrier_amount)
+            mat["ship"] = ship_amount
+            mat["completion"] = _calculate_completion(mat["required"], mat["provided"], carrier_amount, ship_amount)
 
 
 def _update_site_selector() -> None:
@@ -718,7 +722,7 @@ def _on_carrier_edit(name_key: str, var: 'tk.StringVar', row_idx: int,
         carrier_cargo[name_key] = new_val
 
     mat["carrier"] = new_val
-    mat["completion"] = _calculate_completion(mat["required"], mat["provided"], new_val)
+    mat["completion"] = _calculate_completion(mat["required"], mat["provided"], new_val, mat.get("ship", 0))
 
     _update_carrier_amounts()
     _save_data()
@@ -731,7 +735,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
 
     _clear_material_display()
 
-    headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
+    headers = ["Material", "Required", "Provided", "Carrier", "Ship", "Remaining"]
     for col, header_text in enumerate(headers):
         lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
                        anchor=tk.W, fg=_label_fg())
@@ -777,9 +781,13 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
                                 fg=fg_color, anchor=tk.E)
             carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
 
+        ship_lbl = tk.Label(material_frame, text=str(mat.get("ship", 0)), font=("Helvetica", 8),
+                            fg=fg_color, anchor=tk.E)
+        ship_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
+
         comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8),
                             fg=fg_color, anchor=tk.E)
-        comp_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
+        comp_lbl.grid(row=row_idx, column=5, sticky=tk.E, padx=(0, 8))
 
     _register_with_theme(material_frame)
 
@@ -820,6 +828,10 @@ def journal_entry(
                 _save_data()
                 if selected_site_id:
                     _update_display()
+        else:
+            _update_carrier_amounts()
+            if selected_site_id:
+                _update_display()
 
     elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
         if _load_carrier_cargo(only_if_modified=True):

@@ -49,7 +49,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - Built with **tkinter** (not ttk for key widgets, to enable full theming)
 - `tk.OptionMenu` for site selection dropdown
 - Type: and System: info lines below the site selector showing parsed station name components
-- Grid-based material table showing Required, Provided, Carrier, and Remaining columns
+- Grid-based material table showing Required, Provided, Carrier, Ship, and Remaining columns
 - Color coding: green for completed materials (remaining = 0), orange for incomplete materials
 - Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`), refreshed on every `_update_display()` call:
   - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black; Progress value is black
@@ -71,7 +71,7 @@ The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalSt
 - `Docked`, `Market`, `Location`, `CarrierJump` — Reloads FCMaterials.json if the file has been modified since last read (checks file modification time)
 
 ### Completion Calculation
-`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
+`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount + ShipAmount)` — This tells the player how much more of each material still needs to be collected. ShipAmount comes from the player's current ship inventory (`ship_cargo`). Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier/ship cargo covers the gap but delivery is still pending.
 
 ### Journal Directory Detection
 Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.
@@ -91,9 +91,10 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 46 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CAPI sanity check (discard higher total, accept lower/equal total, allow when empty), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), CargoTransfer sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
+- 48 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CAPI sanity check (discard higher total, accept lower/equal total, allow when empty), ship cargo in remaining calculation, cargo event updates ship in construction sites, CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), CargoTransfer sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
 
 ## Recent Changes
+- 2026-03-01: Added Ship column to material table; remaining formula changed to `Required - (Provided + Carrier + Ship)` where Ship tracks player's current ship inventory of required materials
 - 2026-03-01: Added CAPI sanity check: if CAPI cargo total exceeds current carrier cargo total (and current is non-zero), CAPI data is discarded to prevent upward drift
 - 2026-02-24: Theme-aware text colors: Default theme uses black labels and value text; Dark/Transparent uses orange labels and white Type/System values
 - 2026-02-24: Removed custom dark/light mode toggle, integrated with EDMC's native theme system via config.get_int('theme')

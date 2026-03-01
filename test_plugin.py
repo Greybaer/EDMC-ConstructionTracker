@@ -42,6 +42,7 @@ def test_plugin_start():
 def test_construction_depot_processing():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100, "ceramiccomposites": 50}
+    plugin.ship_cargo = {"aluminium": 30}
 
     entry = {
         "event": "ColonisationConstructionDepot",
@@ -80,13 +81,15 @@ def test_construction_depot_processing():
     assert alum["required"] == 500
     assert alum["provided"] == 200
     assert alum["carrier"] == 100
-    assert alum["completion"] == 200
+    assert alum["ship"] == 30
+    assert alum["completion"] == 170
 
     ceramic = site["materials"][1]
     assert ceramic["carrier"] == 50
+    assert ceramic["ship"] == 0
     assert ceramic["completion"] == 150
 
-    print("[PASS] Construction depot processing with carrier amounts")
+    print("[PASS] Construction depot processing with carrier and ship amounts")
 
 
 def test_multiple_sites():
@@ -617,6 +620,76 @@ def test_capi_sanity_check_allows_when_carrier_empty():
     assert plugin.carrier_cargo.get("aluminium") == 500
 
     print("[PASS] CAPI sanity check allows data when carrier cargo is empty")
+
+
+def test_ship_cargo_affects_remaining():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 50, "steel": 25}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 9000,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
+            {"Name": "$steel_name;", "Name_Localised": "Steel",
+             "RequiredAmount": 300, "ProvidedAmount": 50, "Payment": 500},
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Test", "System")
+
+    alum = plugin.construction_sites[9000]["materials"][0]
+    assert alum["ship"] == 50
+    assert alum["completion"] == 250
+
+    steel = plugin.construction_sites[9000]["materials"][1]
+    assert steel["ship"] == 25
+    assert steel["completion"] == 225
+
+    print("[PASS] Ship cargo is included in remaining calculation")
+
+
+def test_cargo_event_updates_ship_in_construction_sites():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 9001,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Test", "System")
+
+    mat = plugin.construction_sites[9001]["materials"][0]
+    assert mat["ship"] == 0
+    assert mat["completion"] == 300
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Inventory": [
+            {"Name": "aluminium", "Count": 75, "Stolen": 0},
+        ],
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    mat = plugin.construction_sites[9001]["materials"][0]
+    assert mat["ship"] == 75
+    assert mat["completion"] == 225
+
+    print("[PASS] Cargo event updates ship amounts in construction sites")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1322,6 +1395,8 @@ if __name__ == "__main__":
     test_capi_sanity_check_discards_higher_total()
     test_capi_sanity_check_accepts_lower_or_equal_total()
     test_capi_sanity_check_allows_when_carrier_empty()
+    test_ship_cargo_affects_remaining()
+    test_cargo_event_updates_ship_in_construction_sites()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
