@@ -876,6 +876,13 @@ def journal_entry(
             if selected_site_id:
                 _update_display()
 
+    elif event_name == "Docked" and entry.get("StationType") == "FleetCarrier":
+        if _load_carrier_cargo():
+            _update_carrier_amounts()
+            _save_data()
+            if selected_site_id:
+                _update_display()
+
     elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
         if _load_carrier_cargo(only_if_modified=True):
             _update_carrier_amounts()

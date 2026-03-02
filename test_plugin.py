@@ -1028,6 +1028,36 @@ def test_docked_skips_reload_if_not_modified():
     print("[PASS] Docked event skips reload when FCMaterials.json not modified")
 
 
+def test_docked_at_fleet_carrier_always_reloads():
+    _reset_plugin()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fc_path = os.path.join(tmpdir, "FCMaterials.json")
+        fc_data = {
+            "timestamp": "2025-01-01T00:00:00Z",
+            "event": "FCMaterials",
+            "Items": [
+                {"id": 1, "Name": "$gold_name;", "Stock": 300, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
+            ],
+        }
+        with open(fc_path, "w") as f:
+            json.dump(fc_data, f)
+
+        plugin.journal_dir = tmpdir
+        plugin.carrier_cargo = {"aluminium": 999}
+        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
+
+        entry = {"event": "Docked", "StationName": "My Carrier", "MarketID": 99999,
+                 "StationType": "FleetCarrier"}
+        state = {"JournalDir": tmpdir}
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+
+        assert plugin.carrier_cargo.get("gold") == 300
+        assert "aluminium" not in plugin.carrier_cargo
+
+    print("[PASS] Docked at FleetCarrier always reloads carrier cargo regardless of mtime")
+
+
 def test_startup_always_reloads_fc_materials():
     with tempfile.TemporaryDirectory() as tmpdir:
         save_data = {
@@ -1595,6 +1625,7 @@ if __name__ == "__main__":
     test_carrier_cargo_persisted()
     test_docked_reloads_if_file_modified()
     test_docked_skips_reload_if_not_modified()
+    test_docked_at_fleet_carrier_always_reloads()
     test_startup_always_reloads_fc_materials()
     test_cargo_event_updates_ship_cargo()
     test_cargo_event_reads_cargo_json()
