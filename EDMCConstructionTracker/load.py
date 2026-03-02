@@ -858,6 +858,24 @@ def journal_entry(
             if selected_site_id:
                 _update_display()
 
+    elif event_name in ("MarketBuy", "MarketSell"):
+        raw_name = entry.get("Type", "")
+        name_key = _normalize_name(raw_name)
+        count = _safe_int(entry.get("Count", 0))
+        if name_key and count > 0:
+            if event_name == "MarketBuy":
+                ship_cargo[name_key] = ship_cargo.get(name_key, 0) + count
+                logger.info(f"MarketBuy: +{count} {name_key} to ship (now {ship_cargo[name_key]})")
+            elif event_name == "MarketSell":
+                current = ship_cargo.get(name_key, 0)
+                ship_cargo[name_key] = max(0, current - count)
+                if ship_cargo[name_key] == 0:
+                    ship_cargo.pop(name_key, None)
+                logger.info(f"MarketSell: -{count} {name_key} from ship (now {ship_cargo.get(name_key, 0)})")
+            _update_carrier_amounts()
+            if selected_site_id:
+                _update_display()
+
     elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
         if _load_carrier_cargo(only_if_modified=True):
             _update_carrier_amounts()

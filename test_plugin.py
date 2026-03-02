@@ -806,6 +806,79 @@ def test_cargo_event_updates_ship_in_construction_sites():
     print("[PASS] Cargo event updates ship amounts in construction sites")
 
 
+def test_market_buy_updates_ship_cargo():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 10}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 9002,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
+             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Test", "System")
+
+    mat = plugin.construction_sites[9002]["materials"][0]
+    assert mat["ship"] == 10
+    assert mat["completion"] == 290
+
+    buy_entry = {
+        "event": "MarketBuy",
+        "Type": "$aluminium_name;",
+        "Type_Localised": "Aluminium",
+        "Count": 50,
+        "BuyPrice": 340,
+        "TotalCost": 17000,
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", buy_entry, state)
+
+    assert plugin.ship_cargo.get("aluminium") == 60
+    mat = plugin.construction_sites[9002]["materials"][0]
+    assert mat["ship"] == 60
+    assert mat["completion"] == 240
+
+    print("[PASS] MarketBuy updates ship cargo and recalculates remaining")
+
+
+def test_market_sell_updates_ship_cargo():
+    _reset_plugin()
+    plugin.ship_cargo = {"aluminium": 100}
+
+    sell_entry = {
+        "event": "MarketSell",
+        "Type": "$aluminium_name;",
+        "Type_Localised": "Aluminium",
+        "Count": 40,
+        "SellPrice": 300,
+        "TotalSale": 12000,
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", sell_entry, state)
+
+    assert plugin.ship_cargo.get("aluminium") == 60
+
+    sell_all_entry = {
+        "event": "MarketSell",
+        "Type": "$aluminium_name;",
+        "Type_Localised": "Aluminium",
+        "Count": 60,
+        "SellPrice": 300,
+        "TotalSale": 18000,
+    }
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", sell_all_entry, state)
+
+    assert "aluminium" not in plugin.ship_cargo
+
+    print("[PASS] MarketSell updates ship cargo correctly")
+
+
 def test_cargo_transfer_to_carrier():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100}
@@ -1514,6 +1587,8 @@ if __name__ == "__main__":
     test_capi_sanity_check_allows_when_carrier_empty()
     test_ship_cargo_affects_remaining()
     test_cargo_event_updates_ship_in_construction_sites()
+    test_market_buy_updates_ship_cargo()
+    test_market_sell_updates_ship_cargo()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()

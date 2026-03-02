@@ -68,6 +68,8 @@ The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalSt
 - `ColonisationContribution` — Updates material delivery counts in real-time
 - `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), buffers transfer for validation
 - `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
+- `MarketBuy` — Adds purchased commodity to ship cargo and recalculates remaining amounts
+- `MarketSell` — Removes sold commodity from ship cargo and recalculates remaining amounts
 - `Docked`, `Market`, `Location`, `CarrierJump` — Reloads FCMaterials.json if the file has been modified since last read (checks file modification time)
 
 ### Completion Calculation
@@ -91,9 +93,10 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 51 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CAPI sanity check (discard higher total, accept lower/equal total, allow when empty), ship cargo in remaining calculation, cargo event updates ship in construction sites, CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), CargoTransfer sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site removal on full delivery (contribution completes, selects next site, depot arrives pre-completed)
+- 53 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CAPI sanity check (discard higher total, accept lower/equal total, allow when empty), ship cargo in remaining calculation, cargo event updates ship in construction sites, CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), CargoTransfer sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site removal on full delivery (contribution completes, selects next site, depot arrives pre-completed)
 
 ## Recent Changes
+- 2026-03-02: Added MarketBuy and MarketSell event handling to update ship cargo in real-time when purchasing or selling commodities
 - 2026-03-01: Construction sites automatically removed when all materials fully delivered (Provided >= Required); selects next available site if the removed site was selected
 - 2026-03-01: Added Ship column to material table; remaining formula changed to `Required - (Provided + Carrier + Ship)` where Ship tracks player's current ship inventory of required materials
 - 2026-03-01: Added CAPI sanity check: if CAPI cargo total exceeds current carrier cargo total (and current is non-zero), CAPI data is discarded to prevent upward drift
