@@ -26,6 +26,7 @@ def _reset_plugin():
     plugin.pending_transfers.clear()
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
+    plugin.docked_at_carrier = False
     plugin.plugin_dir = _test_tmpdir
     plugin._fc_materials_mtime = 0.0
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
@@ -1028,34 +1029,94 @@ def test_docked_skips_reload_if_not_modified():
     print("[PASS] Docked event skips reload when FCMaterials.json not modified")
 
 
-def test_docked_at_fleet_carrier_always_reloads():
+def test_docked_at_fleet_carrier_sets_flag():
     _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_path = os.path.join(tmpdir, "FCMaterials.json")
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Stock": 300, "Demand": 0,
-                 "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(fc_path, "w") as f:
-            json.dump(fc_data, f)
+    plugin.journal_dir = "/fake"
 
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
+    entry = {"event": "Docked", "StationName": "My Carrier", "MarketID": 99999,
+             "StationType": "FleetCarrier"}
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
 
-        entry = {"event": "Docked", "StationName": "My Carrier", "MarketID": 99999,
-                 "StationType": "FleetCarrier"}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
+    assert plugin.docked_at_carrier is True
 
-        assert plugin.carrier_cargo.get("gold") == 300
-        assert "aluminium" not in plugin.carrier_cargo
+    entry2 = {"event": "Undocked", "StationName": "My Carrier", "MarketID": 99999}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry2, state)
 
-    print("[PASS] Docked at FleetCarrier always reloads carrier cargo regardless of mtime")
+    assert plugin.docked_at_carrier is False
+
+    entry3 = {"event": "Docked", "StationName": "Some Station", "MarketID": 88888,
+              "StationType": "Coriolis"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry3, state)
+
+    assert plugin.docked_at_carrier is False
+
+    print("[PASS] Docked at FleetCarrier sets/clears docked_at_carrier flag")
+
+
+def test_market_buy_at_carrier_adjusts_carrier_cargo():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 200, "steel": 100}
+    plugin.ship_cargo = {"aluminium": 10}
+    plugin.docked_at_carrier = True
+    plugin.journal_dir = "/fake"
+
+    buy_entry = {
+        "event": "MarketBuy",
+        "Type": "$aluminium_name;",
+        "Count": 50,
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", buy_entry, state)
+
+    assert plugin.ship_cargo.get("aluminium") == 60
+    assert plugin.carrier_cargo.get("aluminium") == 150
+    assert plugin.carrier_cargo.get("steel") == 100
+
+    print("[PASS] MarketBuy at carrier decreases carrier cargo")
+
+
+def test_market_sell_at_carrier_adjusts_carrier_cargo():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"steel": 80}
+    plugin.docked_at_carrier = True
+    plugin.journal_dir = "/fake"
+
+    sell_entry = {
+        "event": "MarketSell",
+        "Type": "$steel_name;",
+        "Count": 30,
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", sell_entry, state)
+
+    assert plugin.ship_cargo.get("steel") == 50
+    assert plugin.carrier_cargo.get("steel") == 30
+    assert plugin.carrier_cargo.get("aluminium") == 100
+
+    print("[PASS] MarketSell at carrier increases carrier cargo")
+
+
+def test_market_buy_not_at_carrier_leaves_carrier_cargo():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 200}
+    plugin.ship_cargo = {}
+    plugin.docked_at_carrier = False
+    plugin.journal_dir = "/fake"
+
+    buy_entry = {
+        "event": "MarketBuy",
+        "Type": "$aluminium_name;",
+        "Count": 50,
+    }
+    state = {"JournalDir": "/fake"}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", buy_entry, state)
+
+    assert plugin.ship_cargo.get("aluminium") == 50
+    assert plugin.carrier_cargo.get("aluminium") == 200
+
+    print("[PASS] MarketBuy at regular station does not affect carrier cargo")
 
 
 def test_startup_always_reloads_fc_materials():
@@ -1625,7 +1686,10 @@ if __name__ == "__main__":
     test_carrier_cargo_persisted()
     test_docked_reloads_if_file_modified()
     test_docked_skips_reload_if_not_modified()
-    test_docked_at_fleet_carrier_always_reloads()
+    test_docked_at_fleet_carrier_sets_flag()
+    test_market_buy_at_carrier_adjusts_carrier_cargo()
+    test_market_sell_at_carrier_adjusts_carrier_cargo()
+    test_market_buy_not_at_carrier_leaves_carrier_cargo()
     test_startup_always_reloads_fc_materials()
     test_cargo_event_updates_ship_cargo()
     test_cargo_event_reads_cargo_json()

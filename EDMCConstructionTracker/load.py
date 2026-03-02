@@ -43,6 +43,7 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
+docked_at_carrier: bool = False
 _fc_materials_mtime: float = 0.0
 _fc_refresh_timer_id = None
 FC_REFRESH_INTERVAL_MS = 15 * 60 * 1000
@@ -825,7 +826,7 @@ def journal_entry(
     entry: Dict[str, Any],
     state: Dict[str, Any],
 ) -> None:
-    global journal_dir
+    global journal_dir, docked_at_carrier
 
     if journal_dir is None:
         jdir = state.get("JournalDir")
@@ -866,24 +867,32 @@ def journal_entry(
             if event_name == "MarketBuy":
                 ship_cargo[name_key] = ship_cargo.get(name_key, 0) + count
                 logger.info(f"MarketBuy: +{count} {name_key} to ship (now {ship_cargo[name_key]})")
+                if docked_at_carrier:
+                    current = carrier_cargo.get(name_key, 0)
+                    carrier_cargo[name_key] = max(0, current - count)
+                    if carrier_cargo[name_key] == 0:
+                        carrier_cargo.pop(name_key, None)
+                    logger.info(f"MarketBuy from carrier: -{count} {name_key} from carrier (now {carrier_cargo.get(name_key, 0)})")
             elif event_name == "MarketSell":
                 current = ship_cargo.get(name_key, 0)
                 ship_cargo[name_key] = max(0, current - count)
                 if ship_cargo[name_key] == 0:
                     ship_cargo.pop(name_key, None)
                 logger.info(f"MarketSell: -{count} {name_key} from ship (now {ship_cargo.get(name_key, 0)})")
-            _update_carrier_amounts()
-            if selected_site_id:
-                _update_display()
-
-    elif event_name == "Docked" and entry.get("StationType") == "FleetCarrier":
-        if _load_carrier_cargo():
+                if docked_at_carrier:
+                    carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + count
+                    logger.info(f"MarketSell to carrier: +{count} {name_key} to carrier (now {carrier_cargo[name_key]})")
             _update_carrier_amounts()
             _save_data()
             if selected_site_id:
                 _update_display()
 
+    elif event_name == "Undocked":
+        docked_at_carrier = False
+
     elif event_name in ("Docked", "Market", "Location", "CarrierJump"):
+        if event_name == "Docked":
+            docked_at_carrier = entry.get("StationType") == "FleetCarrier"
         if _load_carrier_cargo(only_if_modified=True):
             _update_carrier_amounts()
             _save_data()
