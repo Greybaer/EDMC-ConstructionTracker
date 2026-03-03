@@ -43,9 +43,6 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
-_fc_materials_mtime: float = 0.0
-_fc_refresh_timer_id = None
-FC_REFRESH_INTERVAL_MS = 15 * 60 * 1000
 
 frame = None
 site_selector = None
@@ -146,13 +143,6 @@ def plugin_start3(plugin_dir_path: str) -> str:
 
 
 def plugin_stop() -> None:
-    global _fc_refresh_timer_id
-    if _fc_refresh_timer_id and frame:
-        try:
-            frame.after_cancel(_fc_refresh_timer_id)
-        except Exception:
-            pass
-        _fc_refresh_timer_id = None
     _save_data()
     logger.info(f"{plugin_name} stopped")
 
@@ -202,8 +192,6 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
         _update_site_selector()
         _update_display()
 
-    _schedule_fc_refresh()
-
     return frame
 
 
@@ -230,28 +218,6 @@ def prefs_changed(cmdr: str, is_beta: bool) -> None:
 
 _prefs_hide_completed_var = None
 
-
-def _schedule_fc_refresh() -> None:
-    global _fc_refresh_timer_id
-    if not frame:
-        return
-    _fc_refresh_timer_id = frame.after(FC_REFRESH_INTERVAL_MS, _periodic_fc_refresh)
-    logger.debug("Scheduled FC cargo refresh timer")
-
-
-def _periodic_fc_refresh() -> None:
-    global _fc_refresh_timer_id
-    _fc_refresh_timer_id = None
-
-    if journal_dir and _load_carrier_cargo(only_if_modified=True):
-        _update_carrier_amounts()
-        _save_data()
-        if selected_site_id:
-            _update_display()
-        logger.info("Periodic FC cargo refresh: updated from FCMaterials.json")
-
-    if frame:
-        _schedule_fc_refresh()
 
 
 def _on_site_var_changed(*args) -> None:
@@ -336,8 +302,8 @@ def _split_camel_case(text: str) -> str:
     return re.sub(r'(?<!^)(?=[A-Z])', ' ', text)
 
 
-def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
-    global carrier_cargo, _fc_materials_mtime
+def _load_carrier_cargo() -> bool:
+    global carrier_cargo
     if not journal_dir:
         logger.debug("Cannot load carrier cargo: journal_dir not set")
         return False
@@ -348,11 +314,6 @@ def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
         return False
 
     try:
-        current_mtime = os.path.getmtime(fc_path)
-        if only_if_modified and current_mtime <= _fc_materials_mtime:
-            logger.debug("FCMaterials.json not modified since last read, skipping")
-            return False
-
         with open(fc_path, "r") as f:
             data = json.load(f)
 
@@ -364,7 +325,6 @@ def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
             stock = item.get("Stock", 0)
             if name_key and stock > 0:
                 carrier_cargo[name_key] = stock
-        _fc_materials_mtime = current_mtime
         logger.info(f"Loaded FC cargo: {len(carrier_cargo)} items from FCMaterials.json")
         return True
     except Exception as e:
@@ -372,8 +332,8 @@ def _load_carrier_cargo(only_if_modified: bool = False) -> bool:
         return False
 
 
-def _calculate_completion(required: int, provided: int, carrier: int, ship: int = 0) -> int:
-    remaining = required - (provided + carrier + ship)
+def _calculate_completion(required: int, provided: int, carrier: int) -> int:
+    remaining = required - (provided + carrier)
     return max(0, remaining)
 
 
@@ -534,8 +494,7 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
         required_amount = res.get("RequiredAmount", 0)
         provided_amount = res.get("ProvidedAmount", 0)
         carrier_amount = carrier_cargo.get(name_key, 0)
-        ship_amount = ship_cargo.get(name_key, 0)
-        completion_amount = _calculate_completion(required_amount, provided_amount, carrier_amount, ship_amount)
+        completion_amount = _calculate_completion(required_amount, provided_amount, carrier_amount)
 
         materials.append({
             "name": name_localised,
@@ -543,7 +502,6 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
             "required": required_amount,
             "provided": provided_amount,
             "carrier": carrier_amount,
-            "ship": ship_amount,
             "completion": completion_amount,
         })
 
@@ -569,39 +527,12 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
     logger.info(f"Processed construction depot: {display_name} ({progress:.1%})")
 
 
-def _check_site_complete(market_id: int) -> bool:
-    global selected_site_id
-    if market_id not in construction_sites:
-        return False
-    site_data = construction_sites[market_id]
-    materials = site_data.get("materials", [])
-    if not materials:
-        return False
-    all_delivered = all(mat["provided"] >= mat["required"] for mat in materials)
-    if all_delivered:
-        display_name = site_data.get("display_name", f"Site #{market_id}")
-        logger.info(f"All materials delivered for {display_name}, removing site")
-        del construction_sites[market_id]
-        if selected_site_id == market_id:
-            if construction_sites:
-                selected_site_id = next(iter(construction_sites))
-            else:
-                selected_site_id = None
-        _update_site_selector()
-        _update_display()
-        _save_data()
-        return True
-    return False
-
-
 def _update_carrier_amounts() -> None:
     for mid, site_data in construction_sites.items():
         for mat in site_data["materials"]:
             carrier_amount = carrier_cargo.get(mat["name_key"], 0)
-            ship_amount = ship_cargo.get(mat["name_key"], 0)
             mat["carrier"] = carrier_amount
-            mat["ship"] = ship_amount
-            mat["completion"] = _calculate_completion(mat["required"], mat["provided"], carrier_amount, ship_amount)
+            mat["completion"] = _calculate_completion(mat["required"], mat["provided"], carrier_amount)
 
 
 def _update_site_selector() -> None:
@@ -747,7 +678,7 @@ def _on_carrier_edit(name_key: str, var: 'tk.StringVar', row_idx: int,
         carrier_cargo[name_key] = new_val
 
     mat["carrier"] = new_val
-    mat["completion"] = _calculate_completion(mat["required"], mat["provided"], new_val, mat.get("ship", 0))
+    mat["completion"] = _calculate_completion(mat["required"], mat["provided"], new_val)
 
     _update_carrier_amounts()
     _save_data()
@@ -760,7 +691,7 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
 
     _clear_material_display()
 
-    headers = ["Material", "Required", "Provided", "Carrier", "Ship", "Remaining"]
+    headers = ["Material", "Required", "Provided", "Carrier", "Remaining"]
     for col, header_text in enumerate(headers):
         lbl = tk.Label(material_frame, text=header_text, font=("Helvetica", 8, "bold"),
                        anchor=tk.W, fg=_label_fg())
@@ -806,13 +737,9 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
                                 fg=fg_color, anchor=tk.E)
             carr_lbl.grid(row=row_idx, column=3, sticky=tk.E, padx=(0, 8))
 
-        ship_lbl = tk.Label(material_frame, text=str(mat.get("ship", 0)), font=("Helvetica", 8),
-                            fg=fg_color, anchor=tk.E)
-        ship_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
-
         comp_lbl = tk.Label(material_frame, text=str(mat["completion"]), font=("Helvetica", 8),
                             fg=fg_color, anchor=tk.E)
-        comp_lbl.grid(row=row_idx, column=5, sticky=tk.E, padx=(0, 8))
+        comp_lbl.grid(row=row_idx, column=4, sticky=tk.E, padx=(0, 8))
 
     _register_with_theme(material_frame)
 
@@ -836,7 +763,15 @@ def journal_entry(
 
     event_name = entry.get("event", "")
 
-    if event_name == "CargoTransfer":
+    if event_name == "LoadGame":
+        if journal_dir:
+            _load_carrier_cargo()
+            _update_carrier_amounts()
+            _save_data()
+            if selected_site_id:
+                _update_display()
+
+    elif event_name == "CargoTransfer":
         _process_cargo_transfer(entry)
         _update_carrier_amounts()
         _save_data()
@@ -847,54 +782,9 @@ def journal_entry(
         _update_ship_cargo(entry)
         if pending_transfers:
             _validate_pending_transfers()
-        if not carrier_cargo:
-            if _load_carrier_cargo():
-                _update_carrier_amounts()
-                _save_data()
-                if selected_site_id:
-                    _update_display()
-        else:
-            _update_carrier_amounts()
-            if selected_site_id:
-                _update_display()
-
-    elif event_name in ("MarketBuy", "MarketSell"):
-        raw_name = entry.get("Type", "")
-        name_key = _normalize_name(raw_name)
-        count = _safe_int(entry.get("Count", 0))
-        if name_key and count > 0:
-            if event_name == "MarketBuy":
-                ship_cargo[name_key] = ship_cargo.get(name_key, 0) + count
-                logger.info(f"MarketBuy: +{count} {name_key} to ship (now {ship_cargo[name_key]})")
-            elif event_name == "MarketSell":
-                current = ship_cargo.get(name_key, 0)
-                ship_cargo[name_key] = max(0, current - count)
-                if ship_cargo[name_key] == 0:
-                    ship_cargo.pop(name_key, None)
-                logger.info(f"MarketSell: -{count} {name_key} from ship (now {ship_cargo.get(name_key, 0)})")
-            _update_carrier_amounts()
-            if selected_site_id:
-                _update_display()
-
-    elif event_name in ("Docked", "Location"):
-        if _load_carrier_cargo():
-            _update_carrier_amounts()
-            _save_data()
-            if selected_site_id:
-                _update_display()
-
-    elif event_name in ("Market", "CarrierJump"):
-        if _load_carrier_cargo(only_if_modified=True):
-            _update_carrier_amounts()
-            _save_data()
-            if selected_site_id:
-                _update_display()
 
     elif event_name == "ColonisationConstructionDepot":
-        if not carrier_cargo:
-            _load_carrier_cargo()
         _process_construction_depot(entry, station, system)
-        _check_site_complete(entry.get("MarketID"))
 
     elif event_name == "ColonisationContribution":
         market_id = entry.get("MarketID")
@@ -908,13 +798,12 @@ def journal_entry(
                     if mat["name_key"] == name_key:
                         mat["provided"] += amount
                         mat["completion"] = _calculate_completion(
-                            mat["required"], mat["provided"], mat["carrier"], mat.get("ship", 0)
+                            mat["required"], mat["provided"], mat["carrier"]
                         )
                         break
-            if not _check_site_complete(market_id):
-                _save_data()
-                if market_id == selected_site_id:
-                    _update_display()
+            _save_data()
+            if market_id == selected_site_id:
+                _update_display()
 
 
 def capi_fleetcarrier(data) -> None:
@@ -922,22 +811,7 @@ def capi_fleetcarrier(data) -> None:
         return
 
     logger.info(f"CAPI fleetcarrier called, top-level keys: {list(data.keys()) if hasattr(data, 'keys') else type(data)}")
-
-    pre_capi_total = sum(carrier_cargo.values())
-
-    capi_cargo = _parse_capi_carrier_cargo(data)
-    capi_total = sum(capi_cargo.values())
-
-    if capi_total > pre_capi_total and pre_capi_total > 0:
-        logger.warning(
-            f"CAPI sanity check: CAPI total ({capi_total}) > pre-update total ({pre_capi_total}). "
-            f"Discarding CAPI cargo data to prevent drift."
-        )
-        return
-
-    carrier_cargo.clear()
-    carrier_cargo.update(capi_cargo)
-
+    _process_capi_carrier_cargo(data)
     _update_carrier_amounts()
     _save_data()
     if selected_site_id:
@@ -945,8 +819,10 @@ def capi_fleetcarrier(data) -> None:
     logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items: {dict(carrier_cargo)}")
 
 
-def _parse_capi_carrier_cargo(data) -> Dict[str, int]:
-    result: Dict[str, int] = {}
+def _process_capi_carrier_cargo(data) -> None:
+    global carrier_cargo
+
+    carrier_cargo.clear()
 
     cargo_section = data.get("cargo", [])
     logger.info(f"CAPI cargo type: {type(cargo_section).__name__}, value preview: {str(cargo_section)[:500]}")
@@ -962,7 +838,7 @@ def _parse_capi_carrier_cargo(data) -> Dict[str, int]:
         name_key = _normalize_name(name_raw)
         qty = _safe_int(item.get("quantity", 0) or item.get("qty", 0))
         if name_key and qty > 0:
-            result[name_key] = result.get(name_key, 0) + qty
+            carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + qty
 
     orders = data.get("orders", {})
     if isinstance(orders, dict):
@@ -975,8 +851,8 @@ def _parse_capi_carrier_cargo(data) -> Dict[str, int]:
                 name_raw = item.get("commodity", "") or item.get("name", "")
                 name_key = _normalize_name(name_raw)
                 outstanding = _safe_int(item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0))
-                if name_key and outstanding > 0 and name_key not in result:
-                    result[name_key] = outstanding
+                if name_key and outstanding > 0 and name_key not in carrier_cargo:
+                    carrier_cargo[name_key] = outstanding
 
     market = data.get("market", {})
     if isinstance(market, dict) and not orders:
@@ -987,8 +863,7 @@ def _parse_capi_carrier_cargo(data) -> Dict[str, int]:
             name_raw = item.get("commodity", "") or item.get("name", "")
             name_key = _normalize_name(name_raw)
             qty = _safe_int(item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0))
-            if name_key and qty > 0 and name_key not in result:
-                result[name_key] = qty
+            if name_key and qty > 0 and name_key not in carrier_cargo:
+                carrier_cargo[name_key] = qty
 
-    logger.info(f"CAPI carrier cargo parsed: {dict(result)}")
-    return result
+    logger.info(f"CAPI carrier cargo parsed: {dict(carrier_cargo)}")

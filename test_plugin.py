@@ -27,7 +27,6 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
-    plugin._fc_materials_mtime = 0.0
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
         os.remove(save_path)
@@ -42,7 +41,6 @@ def test_plugin_start():
 def test_construction_depot_processing():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100, "ceramiccomposites": 50}
-    plugin.ship_cargo = {"aluminium": 30}
 
     entry = {
         "event": "ColonisationConstructionDepot",
@@ -81,15 +79,13 @@ def test_construction_depot_processing():
     assert alum["required"] == 500
     assert alum["provided"] == 200
     assert alum["carrier"] == 100
-    assert alum["ship"] == 30
-    assert alum["completion"] == 170
+    assert alum["completion"] == 200
 
     ceramic = site["materials"][1]
     assert ceramic["carrier"] == 50
-    assert ceramic["ship"] == 0
     assert ceramic["completion"] == 150
 
-    print("[PASS] Construction depot processing with carrier and ship amounts")
+    print("[PASS] Construction depot processing with carrier amounts")
 
 
 def test_multiple_sites():
@@ -236,120 +232,6 @@ def test_contribution_updates():
     print("[PASS] ColonisationContribution updates ProvidedAmount and recalculates CompletionAmount")
 
 
-def test_site_removed_when_fully_delivered():
-    _reset_plugin()
-
-    depot_entry = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 556,
-        "ConstructionProgress": 0.9,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {
-                "Name": "$aluminium_name;",
-                "Name_Localised": "Aluminium",
-                "RequiredAmount": 100,
-                "ProvidedAmount": 80,
-                "Payment": 1000,
-            }
-        ],
-    }
-    plugin._process_construction_depot(depot_entry, "Depot", "System")
-    assert 556 in plugin.construction_sites
-    assert plugin.selected_site_id == 556
-
-    contrib_entry = {
-        "event": "ColonisationContribution",
-        "MarketID": 556,
-        "Contributions": [
-            {
-                "Name": "$aluminium_name;",
-                "Name_Localised": "Aluminium",
-                "Amount": 20,
-            }
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "System", "Depot", contrib_entry, state)
-
-    assert 556 not in plugin.construction_sites
-    assert plugin.selected_site_id is None
-
-    print("[PASS] Construction site removed when all materials fully delivered")
-
-
-def test_site_removed_selects_next_site():
-    _reset_plugin()
-
-    depot1 = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 557,
-        "ConstructionProgress": 0.5,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$steel_name;", "Name_Localised": "Steel",
-             "RequiredAmount": 200, "ProvidedAmount": 50, "Payment": 500},
-        ],
-    }
-    plugin._process_construction_depot(depot1, "Site A", "System")
-
-    depot2 = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 558,
-        "ConstructionProgress": 0.9,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-             "RequiredAmount": 100, "ProvidedAmount": 90, "Payment": 1000},
-        ],
-    }
-    plugin._process_construction_depot(depot2, "Site B", "System")
-    assert plugin.selected_site_id == 558
-
-    contrib_entry = {
-        "event": "ColonisationContribution",
-        "MarketID": 558,
-        "Contributions": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium", "Amount": 10},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "System", "Site B", contrib_entry, state)
-
-    assert 558 not in plugin.construction_sites
-    assert 557 in plugin.construction_sites
-    assert plugin.selected_site_id == 557
-
-    print("[PASS] Removing completed site selects next available site")
-
-
-def test_depot_event_with_all_provided_removes_site():
-    _reset_plugin()
-
-    depot_entry = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 559,
-        "ConstructionProgress": 1.0,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-             "RequiredAmount": 100, "ProvidedAmount": 100, "Payment": 1000},
-            {"Name": "$steel_name;", "Name_Localised": "Steel",
-             "RequiredAmount": 200, "ProvidedAmount": 200, "Payment": 500},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "System", "Station", depot_entry, state)
-
-    assert 559 not in plugin.construction_sites
-
-    print("[PASS] Depot event with all materials already provided removes site immediately")
-
-
 def test_fc_materials_loading():
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
@@ -466,65 +348,30 @@ def test_display_name_with_ext_panel():
     print("[PASS] Display name extracts site name from $EXT_PANEL_ format")
 
 
-def test_docked_event_loads_carrier_cargo():
+def test_docked_event_does_not_reload_carrier_cargo():
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
             "timestamp": "2025-01-01T00:00:00Z",
             "event": "FCMaterials",
-            "MarketID": 3700005632,
-            "CarrierName": "TEST CARRIER",
-            "CarrierID": "T7T-TTT",
             "Items": [
-                {"id": 1, "Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-                 "Stock": 200, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-                {"id": 2, "Name": "$steel_name;", "Name_Localised": "Steel",
-                 "Stock": 150, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
+                {"id": 1, "Name": "$aluminium_name;", "Stock": 200, "Demand": 0,
+                 "BuyPrice": 0, "SellPrice": 0},
             ],
         }
         with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
             json.dump(fc_data, f)
 
         plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
+        plugin.carrier_cargo = {"steel": 500}
 
-        docked_entry = {
-            "event": "Docked",
-            "StationName": "Test Station",
-            "StarSystem": "Test System",
-            "MarketID": 99999,
-        }
+        docked_entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
         state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Test System", "Test Station", docked_entry, state)
+        plugin.journal_entry("Cmdr", False, "Sys", "Stn", docked_entry, state)
 
-        assert plugin.carrier_cargo.get("aluminium") == 200
-        assert plugin.carrier_cargo.get("steel") == 150
+        assert plugin.carrier_cargo.get("steel") == 500
+        assert "aluminium" not in plugin.carrier_cargo
 
-    print("[PASS] Docked event triggers carrier cargo reload")
-
-
-def test_market_event_loads_carrier_cargo():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "steel", "Name_Localised": "Steel",
-                 "Stock": 300, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
-
-        market_entry = {"event": "Market", "MarketID": 99999, "StationName": "Test"}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", market_entry, state)
-
-        assert plugin.carrier_cargo.get("steel") == 300
-
-    print("[PASS] Market event triggers carrier cargo reload")
+    print("[PASS] Docked event does not reload carrier cargo")
 
 
 def test_capi_fleetcarrier_cargo_list_format():
@@ -681,204 +528,6 @@ def test_capi_fleetcarrier_empty_data():
     print("[PASS] CAPI fleetcarrier handles empty/null data")
 
 
-def test_capi_sanity_check_discards_higher_total():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100, "steel": 50}
-
-    capi_data = {
-        "cargo": [
-            {"commodity": "Aluminium", "quantity": 200},
-            {"commodity": "Steel", "quantity": 100},
-        ],
-        "orders": {"commodities": {"sales": {}, "purchases": {}}},
-    }
-    plugin.capi_fleetcarrier(capi_data)
-
-    assert plugin.carrier_cargo.get("aluminium") == 100
-    assert plugin.carrier_cargo.get("steel") == 50
-
-    print("[PASS] CAPI sanity check discards data when CAPI total exceeds current total")
-
-
-def test_capi_sanity_check_accepts_lower_or_equal_total():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 200, "steel": 150}
-
-    capi_data = {
-        "cargo": [
-            {"commodity": "Aluminium", "quantity": 100},
-            {"commodity": "Steel", "quantity": 80},
-        ],
-        "orders": {"commodities": {"sales": {}, "purchases": {}}},
-    }
-    plugin.capi_fleetcarrier(capi_data)
-
-    assert plugin.carrier_cargo.get("aluminium") == 100
-    assert plugin.carrier_cargo.get("steel") == 80
-
-    print("[PASS] CAPI sanity check accepts data when CAPI total is lower or equal")
-
-
-def test_capi_sanity_check_allows_when_carrier_empty():
-    _reset_plugin()
-    plugin.carrier_cargo = {}
-
-    capi_data = {
-        "cargo": [
-            {"commodity": "Aluminium", "quantity": 500},
-        ],
-        "orders": {"commodities": {"sales": {}, "purchases": {}}},
-    }
-    plugin.capi_fleetcarrier(capi_data)
-
-    assert plugin.carrier_cargo.get("aluminium") == 500
-
-    print("[PASS] CAPI sanity check allows data when carrier cargo is empty")
-
-
-def test_ship_cargo_affects_remaining():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 50, "steel": 25}
-
-    depot_entry = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 9000,
-        "ConstructionProgress": 0.1,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
-            {"Name": "$steel_name;", "Name_Localised": "Steel",
-             "RequiredAmount": 300, "ProvidedAmount": 50, "Payment": 500},
-        ],
-    }
-    plugin._process_construction_depot(depot_entry, "Test", "System")
-
-    alum = plugin.construction_sites[9000]["materials"][0]
-    assert alum["ship"] == 50
-    assert alum["completion"] == 250
-
-    steel = plugin.construction_sites[9000]["materials"][1]
-    assert steel["ship"] == 25
-    assert steel["completion"] == 225
-
-    print("[PASS] Ship cargo is included in remaining calculation")
-
-
-def test_cargo_event_updates_ship_in_construction_sites():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {}
-
-    depot_entry = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 9001,
-        "ConstructionProgress": 0.1,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
-        ],
-    }
-    plugin._process_construction_depot(depot_entry, "Test", "System")
-
-    mat = plugin.construction_sites[9001]["materials"][0]
-    assert mat["ship"] == 0
-    assert mat["completion"] == 300
-
-    cargo_entry = {
-        "event": "Cargo",
-        "Vessel": "Ship",
-        "Inventory": [
-            {"Name": "aluminium", "Count": 75, "Stolen": 0},
-        ],
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-    mat = plugin.construction_sites[9001]["materials"][0]
-    assert mat["ship"] == 75
-    assert mat["completion"] == 225
-
-    print("[PASS] Cargo event updates ship amounts in construction sites")
-
-
-def test_market_buy_updates_ship_cargo():
-    _reset_plugin()
-    plugin.carrier_cargo = {"aluminium": 100}
-    plugin.ship_cargo = {"aluminium": 10}
-
-    depot_entry = {
-        "event": "ColonisationConstructionDepot",
-        "MarketID": 9002,
-        "ConstructionProgress": 0.1,
-        "ConstructionComplete": False,
-        "ConstructionFailed": False,
-        "ResourcesRequired": [
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium",
-             "RequiredAmount": 500, "ProvidedAmount": 100, "Payment": 1000},
-        ],
-    }
-    plugin._process_construction_depot(depot_entry, "Test", "System")
-
-    mat = plugin.construction_sites[9002]["materials"][0]
-    assert mat["ship"] == 10
-    assert mat["completion"] == 290
-
-    buy_entry = {
-        "event": "MarketBuy",
-        "Type": "$aluminium_name;",
-        "Type_Localised": "Aluminium",
-        "Count": 50,
-        "BuyPrice": 340,
-        "TotalCost": 17000,
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", buy_entry, state)
-
-    assert plugin.ship_cargo.get("aluminium") == 60
-    mat = plugin.construction_sites[9002]["materials"][0]
-    assert mat["ship"] == 60
-    assert mat["completion"] == 240
-
-    print("[PASS] MarketBuy updates ship cargo and recalculates remaining")
-
-
-def test_market_sell_updates_ship_cargo():
-    _reset_plugin()
-    plugin.ship_cargo = {"aluminium": 100}
-
-    sell_entry = {
-        "event": "MarketSell",
-        "Type": "$aluminium_name;",
-        "Type_Localised": "Aluminium",
-        "Count": 40,
-        "SellPrice": 300,
-        "TotalSale": 12000,
-    }
-    state = {"JournalDir": "/fake"}
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", sell_entry, state)
-
-    assert plugin.ship_cargo.get("aluminium") == 60
-
-    sell_all_entry = {
-        "event": "MarketSell",
-        "Type": "$aluminium_name;",
-        "Type_Localised": "Aluminium",
-        "Count": 60,
-        "SellPrice": 300,
-        "TotalSale": 18000,
-    }
-    plugin.journal_entry("Cmdr", False, "Sys", "Stn", sell_all_entry, state)
-
-    assert "aluminium" not in plugin.ship_cargo
-
-    print("[PASS] MarketSell updates ship cargo correctly")
-
-
 def test_cargo_transfer_to_carrier():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100}
@@ -972,7 +621,7 @@ def test_carrier_cargo_persisted():
     print("[PASS] Carrier cargo is persisted across save/load")
 
 
-def test_docked_reloads_if_file_modified():
+def test_loadgame_reloads_carrier_cargo():
     _reset_plugin()
     with tempfile.TemporaryDirectory() as tmpdir:
         fc_data = {
@@ -988,102 +637,15 @@ def test_docked_reloads_if_file_modified():
 
         plugin.journal_dir = tmpdir
         plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = 0.0
 
-        entry = {"event": "Docked", "StationName": "Test", "MarketID": 99999}
+        entry = {"event": "LoadGame", "Commander": "TestCmdr"}
         state = {"JournalDir": tmpdir}
         plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
 
         assert plugin.carrier_cargo.get("gold") == 200
         assert "aluminium" not in plugin.carrier_cargo
 
-    print("[PASS] Docked event reloads FCMaterials.json when file has been modified")
-
-
-def test_market_skips_reload_if_not_modified():
-    _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_path = os.path.join(tmpdir, "FCMaterials.json")
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Stock": 200, "Demand": 0,
-                 "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(fc_path, "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
-
-        entry = {"event": "Market", "StationName": "Test", "MarketID": 99999}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
-
-        assert plugin.carrier_cargo.get("aluminium") == 999
-
-    print("[PASS] Market event skips reload when FCMaterials.json not modified")
-
-
-def test_docked_always_reloads_carrier_cargo():
-    _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_path = os.path.join(tmpdir, "FCMaterials.json")
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Stock": 300, "Demand": 0,
-                 "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(fc_path, "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo = {"aluminium": 999}
-        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
-
-        entry = {"event": "Docked", "StationName": "My Carrier", "MarketID": 99999}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", entry, state)
-
-        assert plugin.carrier_cargo.get("gold") == 300
-        assert "aluminium" not in plugin.carrier_cargo
-
-    print("[PASS] Docked event always reloads carrier cargo regardless of mtime")
-
-
-def test_location_always_reloads_carrier_cargo():
-    _reset_plugin()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_path = os.path.join(tmpdir, "FCMaterials.json")
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "Items": [
-                {"id": 1, "Name": "$steel_name;", "Stock": 500, "Demand": 0,
-                 "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(fc_path, "w") as f:
-            json.dump(fc_data, f)
-
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo = {"aluminium": 100}
-        plugin._fc_materials_mtime = os.path.getmtime(fc_path)
-
-        entry = {"event": "Location", "StarSystem": "Test System"}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Test System", "", entry, state)
-
-        assert plugin.carrier_cargo.get("steel") == 500
-        assert "aluminium" not in plugin.carrier_cargo
-
-    print("[PASS] Location event always reloads carrier cargo on login")
+    print("[PASS] LoadGame event reloads carrier cargo from FCMaterials.json")
 
 
 def test_startup_always_reloads_fc_materials():
@@ -1338,29 +900,24 @@ def test_sanity_check_mixed_directions():
 
 
 def test_journal_entry_cargo_event():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fc_data = {
-            "timestamp": "2025-01-01T00:00:00Z",
-            "event": "FCMaterials",
-            "MarketID": 3700005632,
-            "CarrierName": "TEST CARRIER",
-            "CarrierID": "T7T-TTT",
-            "Items": [
-                {"id": 1, "Name": "$gold_name;", "Name_Localised": "Gold",
-                 "Stock": 50, "Demand": 0, "BuyPrice": 0, "SellPrice": 0},
-            ],
-        }
-        with open(os.path.join(tmpdir, "FCMaterials.json"), "w") as f:
-            json.dump(fc_data, f)
+    _reset_plugin()
+    plugin.carrier_cargo = {"gold": 50}
 
-        plugin.journal_dir = tmpdir
-        plugin.carrier_cargo.clear()
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Count": 2,
+        "Inventory": [
+            {"Name": "gold", "Count": 10},
+            {"Name": "silver", "Count": 5},
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
 
-        cargo_entry = {"event": "Cargo", "Vessel": "Ship", "Count": 1}
-        state = {"JournalDir": tmpdir}
-        plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
-
-        assert plugin.carrier_cargo.get("gold") == 50
+    assert plugin.ship_cargo.get("gold") == 10
+    assert plugin.ship_cargo.get("silver") == 5
+    assert plugin.carrier_cargo.get("gold") == 50
 
     print("[PASS] journal_entry handles Cargo event")
 
@@ -1627,34 +1184,20 @@ if __name__ == "__main__":
     test_multiple_sites()
     test_carrier_cargo_update()
     test_contribution_updates()
-    test_site_removed_when_fully_delivered()
-    test_site_removed_selects_next_site()
-    test_depot_event_with_all_provided_removes_site()
     test_fc_materials_loading()
     test_journal_entry_cargo_event()
-    test_docked_event_loads_carrier_cargo()
-    test_market_event_loads_carrier_cargo()
+    test_docked_event_does_not_reload_carrier_cargo()
     test_capi_fleetcarrier_cargo_list_format()
     test_capi_fleetcarrier_cargo_dict_format()
     test_capi_fleetcarrier_cargo_duplicate_entries()
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
-    test_capi_sanity_check_discards_higher_total()
-    test_capi_sanity_check_accepts_lower_or_equal_total()
-    test_capi_sanity_check_allows_when_carrier_empty()
-    test_ship_cargo_affects_remaining()
-    test_cargo_event_updates_ship_in_construction_sites()
-    test_market_buy_updates_ship_cargo()
-    test_market_sell_updates_ship_cargo()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
     test_carrier_cargo_persisted()
-    test_docked_reloads_if_file_modified()
-    test_market_skips_reload_if_not_modified()
-    test_docked_always_reloads_carrier_cargo()
-    test_location_always_reloads_carrier_cargo()
+    test_loadgame_reloads_carrier_cargo()
     test_startup_always_reloads_fc_materials()
     test_cargo_event_updates_ship_cargo()
     test_cargo_event_reads_cargo_json()

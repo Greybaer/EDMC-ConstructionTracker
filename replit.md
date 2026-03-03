@@ -24,14 +24,14 @@ The plugin follows EDMC's plugin contract:
 
 ### Data Model
 - **Construction Sites**: Stored in an in-memory dictionary keyed by `MarketID` (integer). Each site contains construction progress, resource requirements (required, provided, carrier amounts), station metadata, and parsed station name components (site_type, site_name, parsed_system).
-- **Carrier Cargo**: A dictionary mapping resource names (lowercase, normalized) to quantities. Baseline set from CAPI `/fleetcarrier` endpoint (primary) or `FCMaterials.json` file (fallback on first load). Kept up-to-date incrementally via `CargoTransfer` journal events. Validated against ship cargo deltas for accuracy. Persisted to disk across EDMC restarts.
+- **Carrier Cargo**: A dictionary mapping resource names (lowercase, normalized) to quantities. Baseline set once at login from FCMaterials.json (via `LoadGame` event) or CAPI `/fleetcarrier` endpoint. After the initial baseline, only updated incrementally via `CargoTransfer` journal events. Validated against ship cargo deltas for accuracy. Persisted to disk across EDMC restarts.
 - **Ship Cargo**: A dictionary tracking the player's current ship inventory, updated from Cargo events (Inventory field or Cargo.json file). Used as ground truth to validate CargoTransfer amounts.
 - **Pending Transfers**: A list buffering CargoTransfer events awaiting validation by the next Cargo event.
 - **Selected Site**: Tracks which construction site the user is currently viewing via `selected_site_id`.
 
 ### Fleet Carrier Cargo Sources (in priority order)
-1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries. **CAPI sanity check**: Before applying CAPI data, the total quantity of the incoming CAPI cargo is compared to the current carrier cargo total. If the CAPI total exceeds the current total (and current is non-zero), the CAPI data is discarded to prevent upward drift. CAPI data is always accepted when carrier cargo is empty (initial load).
-2. **FCMaterials.json** (startup + periodic refresh): Always reloaded on plugin startup to get fresh baseline. Also reloaded on Docked/Market/Location/CarrierJump events if the file has been modified since the last read (tracks file modification time). A periodic timer checks every 15 minutes for file changes. Uses `Stock` field from `Items[]`.
+1. **CAPI `/fleetcarrier` endpoint** (primary): Uses the `capi_fleetcarrier(data)` hook. EDMC queries Frontier's API when user opens Carrier Management UI in-game. Requires "Enable Fleetcarrier CAPI Queries" in EDMC Settings → Configuration. Handles multiple data formats: `data['cargo']` as a list (with `commodity`/`quantity` fields) or as a dict (with nested `commodities`/`items` arrays using `name`/`qty` fields). Also reads `orders.commodities.sales` for items listed for sale. Duplicate cargo entries are summed. Has a 15-minute cooldown between queries.
+2. **FCMaterials.json** (startup + login): Loaded on plugin startup and on `LoadGame` journal event to establish a fresh baseline. Uses `Stock` field from `Items[]`.
 3. **CargoTransfer journal events** (incremental updates): Tracks `tocarrier` and `toship` transfers in real-time, adjusting the carrier cargo baseline up or down. Each transfer is buffered as a pending validation until the next Cargo event confirms the ship inventory changed by the expected amount. If there's a mismatch, carrier cargo is auto-corrected based on the actual ship delta.
 
 ### Name Normalization
@@ -49,7 +49,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - Built with **tkinter** (not ttk for key widgets, to enable full theming)
 - `tk.OptionMenu` for site selection dropdown
 - Type: and System: info lines below the site selector showing parsed station name components
-- Grid-based material table showing Required, Provided, Carrier, Ship, and Remaining columns
+- Grid-based material table showing Required, Provided, Carrier, and Remaining columns
 - Color coding: green for completed materials (remaining = 0), orange for incomplete materials
 - Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`), refreshed on every `_update_display()` call:
   - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black; Progress value is black
@@ -64,17 +64,14 @@ Station names come in two formats, both parsed into three variables: `site_type`
 The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalStation" → "Orbital Station") for display.
 
 ### Journal Events Handled
+- `LoadGame` — Reloads carrier cargo from FCMaterials.json to establish a fresh baseline at login
 - `ColonisationConstructionDepot` — Updates construction site data with full material requirements
 - `ColonisationContribution` — Updates material delivery counts in real-time
 - `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), buffers transfer for validation
 - `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
-- `MarketBuy` — Adds purchased commodity to ship cargo
-- `MarketSell` — Removes sold commodity from ship cargo
-- `Docked`, `Location` — Always reloads FCMaterials.json (fresh baseline on docking and login)
-- `Market`, `CarrierJump` — Reloads FCMaterials.json if the file has been modified since last read (checks file modification time)
 
 ### Completion Calculation
-`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount + ShipAmount)` — This tells the player how much more of each material still needs to be collected. ShipAmount comes from the player's current ship inventory (`ship_cargo`). Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier/ship cargo covers the gap but delivery is still pending.
+`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
 
 ### Journal Directory Detection
 Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.
@@ -94,22 +91,12 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 54 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, string values, empty data), CAPI sanity check (discard higher total, accept lower/equal total, allow when empty), ship cargo in remaining calculation, cargo event updates ship in construction sites, CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), CargoTransfer sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, FCMaterials reload-on-modify, FCMaterials skip-if-not-modified, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site removal on full delivery (contribution completes, selects next site, depot arrives pre-completed)
+- 40 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
 
 ## Recent Changes
-- 2026-03-03: Docked and Location events now always reload FCMaterials.json (no mtime check); ensures carrier cargo is gathered on login and updated on docking
-- 2026-03-03: Removed MarketBuy/MarketSell carrier cargo adjustments; only CargoTransfer events modify carrier cargo incrementally
-- 2026-03-03: Removed docked_at_carrier flag and Undocked event handling (no longer needed)
-- 2026-03-02: Added MarketBuy and MarketSell event handling to update ship cargo in real-time when purchasing or selling commodities
-- 2026-03-01: Construction sites automatically removed when all materials fully delivered (Provided >= Required); selects next available site if the removed site was selected
-- 2026-03-01: Added Ship column to material table; remaining formula changed to `Required - (Provided + Carrier + Ship)` where Ship tracks player's current ship inventory of required materials
-- 2026-03-01: Added CAPI sanity check: if CAPI cargo total exceeds current carrier cargo total (and current is non-zero), CAPI data is discarded to prevent upward drift
+- 2026-03-01: Carrier cargo now loaded once at login (LoadGame event) then updated only via CargoTransfer; removed periodic timer and Docked/Market/Location/CarrierJump reload triggers to reduce drift
 - 2026-02-24: Theme-aware text colors: Default theme uses black labels and value text; Dark/Transparent uses orange labels and white Type/System values
 - 2026-02-24: Removed custom dark/light mode toggle, integrated with EDMC's native theme system via config.get_int('theme')
-- 2026-02-21: FCMaterials.json always reloaded on startup for fresh baseline, not relying on stale persisted data
-- 2026-02-21: Docked/Market/Location/CarrierJump events reload FCMaterials.json if file modified (tracks mtime)
-- 2026-02-21: Added 15-minute periodic timer to check for FCMaterials.json changes and refresh carrier cargo
-- 2026-02-21: Timer cleanup on plugin_stop to avoid orphaned callbacks
 - 2026-02-21: Remaining formula changed to `required - (provided + carrier)`, green color requires both remaining=0 and provided>=required
 - 2026-02-21: Added ship cargo tracking from Cargo events (Inventory field and Cargo.json fallback)
 - 2026-02-21: Added sanity check: validates CargoTransfer amounts against ship cargo deltas, auto-corrects carrier cargo on mismatch
