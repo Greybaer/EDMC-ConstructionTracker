@@ -1272,6 +1272,151 @@ def test_hide_completed_persisted():
 
 
 
+def test_complete_site_removed_on_contribution():
+    _reset_plugin()
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 5555,
+        "ConstructionProgress": 0.9,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 90,
+                "Payment": 500,
+            },
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 300,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry, "Test Site", "Sol")
+    assert 5555 in plugin.construction_sites
+
+    contrib_entry = {
+        "event": "ColonisationContribution",
+        "MarketID": 5555,
+        "Contributions": [
+            {"Name": "$steel_name;", "Amount": 10},
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sol", "Test Site", contrib_entry, state)
+
+    assert 5555 not in plugin.construction_sites
+    print("[PASS] Complete construction site removed after contribution")
+
+
+def test_complete_site_removed_on_depot_event():
+    _reset_plugin()
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 6666,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 100,
+                "Payment": 500,
+            },
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sol", "Test Site", entry, state)
+
+    assert 6666 not in plugin.construction_sites
+    print("[PASS] Complete construction site removed on depot event")
+
+
+def test_incomplete_site_not_removed():
+    _reset_plugin()
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 7777,
+        "ConstructionProgress": 0.5,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 50,
+                "Payment": 500,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry, "Test Site", "Sol")
+    assert 7777 in plugin.construction_sites
+    print("[PASS] Incomplete construction site not removed")
+
+
+def test_selected_site_switches_on_removal():
+    _reset_plugin()
+    entry1 = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 1111,
+        "ConstructionProgress": 0.5,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 50,
+                "Payment": 500,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry1, "Site A", "Sol")
+
+    entry2 = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 2222,
+        "ConstructionProgress": 0.9,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 40,
+                "Payment": 300,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry2, "Site B", "Alpha Centauri")
+    assert plugin.selected_site_id == 2222
+
+    contrib_entry = {
+        "event": "ColonisationContribution",
+        "MarketID": 2222,
+        "Contributions": [
+            {"Name": "$aluminium_name;", "Amount": 10},
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Alpha Centauri", "Site B", contrib_entry, state)
+
+    assert 2222 not in plugin.construction_sites
+    assert 1111 in plugin.construction_sites
+    assert plugin.selected_site_id == 1111
+    print("[PASS] Selected site switches to remaining site on removal")
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -1319,5 +1464,10 @@ if __name__ == "__main__":
 
     test_hide_completed_materials()
     test_hide_completed_persisted()
+
+    test_complete_site_removed_on_contribution()
+    test_complete_site_removed_on_depot_event()
+    test_incomplete_site_not_removed()
+    test_selected_site_switches_on_removal()
 
     print(f"\nAll tests passed!")

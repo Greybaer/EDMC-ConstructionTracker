@@ -50,7 +50,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - `tk.OptionMenu` for site selection dropdown
 - Type: and System: info lines below the site selector showing parsed station name components
 - Grid-based material table showing Required, Provided, Carrier, Ship, and Remaining columns
-- Color coding: green for completed materials (remaining = 0), orange for incomplete materials
+- Color coding: green for fully delivered (remaining=0, provided>=required), yellow/goldenrod (#daa520) for pending delivery (remaining=0 but carrier>0, not yet delivered), orange for incomplete materials
 - Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`), refreshed on every `_update_display()` call:
   - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black; Progress value is black
   - **Dark (1) / Transparent (2) themes**: Labels are orange (#ff8c00); Type/System value strings are white; Progress value is white
@@ -71,7 +71,10 @@ The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalSt
 - `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
 
 ### Completion Calculation
-`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount + ShipAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), staying orange when carrier cargo covers the gap but delivery is still pending.
+`CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount + ShipAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), yellow/goldenrod when remaining is zero but carrier has stock (pending delivery), staying orange when incomplete.
+
+### Site Auto-Removal
+When all materials at a construction site have `provided >= required`, the site is automatically removed from the dataset. This triggers after `ColonisationContribution` events and `ColonisationConstructionDepot` events. If the removed site was the selected site, selection switches to the next available site (or clears if none remain).
 
 ### Journal Directory Detection
 Uses EDMC's config module (`config.get_str('journaldir')` or `config.default_journal_dir`) to find the Elite Dangerous journal directory where `FCMaterials.json` is located.
@@ -91,9 +94,11 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 43 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data, lower-amount discard), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), ship cargo in completion calculation, Cargo event updates ship amounts in sites, sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence
+- 47 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data, lower-amount discard), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), ship cargo in completion calculation, Cargo event updates ship amounts in sites, sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site auto-removal (on contribution, on depot event, incomplete not removed, selected site switches)
 
 ## Recent Changes
+- 2026-03-04: Construction sites auto-removed when all materials fully delivered (provided >= required)
+- 2026-03-04: Pending delivery color: yellow/goldenrod (#daa520) for materials with remaining=0 but carrier > 0
 - 2026-03-04: Added Ship column to material table showing player's current ship inventory per material
 - 2026-03-04: Remaining formula changed to `required - (provided + carrier + ship)` to include ship cargo
 - 2026-03-04: Cargo events now update ship amounts in construction site materials and refresh display

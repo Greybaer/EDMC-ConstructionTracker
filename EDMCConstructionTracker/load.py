@@ -65,6 +65,7 @@ LABEL_FG_DARK = "#ff8c00"
 VALUE_FG_DEFAULT = "#000000"
 VALUE_FG_DARK = "#ffffff"
 COMPLETE_GREEN = "#4ec94e"
+PENDING_YELLOW = "#daa520"
 INCOMPLETE_ORANGE = "#ff8c00"
 
 SAVE_FILE = "construction_tracker_data.json"
@@ -529,6 +530,31 @@ def _process_construction_depot(entry: Dict[str, Any], station: Optional[str], s
     logger.info(f"Processed construction depot: {display_name} ({progress:.1%})")
 
 
+def _check_site_complete(market_id: int) -> bool:
+    global selected_site_id
+    if market_id not in construction_sites:
+        return False
+    site = construction_sites[market_id]
+    materials = site.get("materials", [])
+    if not materials:
+        return False
+    all_delivered = all(m["provided"] >= m["required"] for m in materials)
+    if all_delivered:
+        display_name = site.get("display_name", str(market_id))
+        logger.info(f"Construction site fully delivered, removing: {display_name}")
+        del construction_sites[market_id]
+        if selected_site_id == market_id:
+            if construction_sites:
+                selected_site_id = next(iter(construction_sites))
+            else:
+                selected_site_id = None
+        _update_site_selector()
+        _update_display()
+        _save_data()
+        return True
+    return False
+
+
 def _update_carrier_amounts() -> None:
     for mid, site_data in construction_sites.items():
         for mat in site_data["materials"]:
@@ -717,7 +743,12 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
         display_materials = [m for m in materials if not (m["completion"] == 0 and m["provided"] >= m["required"])]
 
     for row_idx, mat in enumerate(display_materials, start=2):
-        fg_color = COMPLETE_GREEN if (mat["completion"] == 0 and mat["provided"] >= mat["required"]) else INCOMPLETE_ORANGE
+        if mat["completion"] == 0 and mat["provided"] >= mat["required"]:
+            fg_color = COMPLETE_GREEN
+        elif mat["completion"] == 0 and mat.get("carrier", 0) > 0:
+            fg_color = PENDING_YELLOW
+        else:
+            fg_color = INCOMPLETE_ORANGE
 
         name_lbl = tk.Label(material_frame, text=mat["name"], font=("Helvetica", 8),
                             fg=fg_color, anchor=tk.W)
@@ -805,6 +836,9 @@ def journal_entry(
 
     elif event_name == "ColonisationConstructionDepot":
         _process_construction_depot(entry, station, system)
+        market_id = entry.get("MarketID")
+        if market_id:
+            _check_site_complete(market_id)
 
     elif event_name == "ColonisationContribution":
         market_id = entry.get("MarketID")
@@ -821,9 +855,10 @@ def journal_entry(
                             mat["required"], mat["provided"], mat["carrier"], mat.get("ship", 0)
                         )
                         break
-            _save_data()
-            if market_id == selected_site_id:
-                _update_display()
+            if not _check_site_complete(market_id):
+                _save_data()
+                if market_id == selected_site_id:
+                    _update_display()
 
 
 def capi_fleetcarrier(data) -> None:
