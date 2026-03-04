@@ -523,9 +523,29 @@ def test_capi_fleetcarrier_empty_data():
 
     capi_data = {"cargo": [], "orders": {"commodities": {"sales": {}, "purchases": {}}}}
     plugin.capi_fleetcarrier(capi_data)
-    assert len(plugin.carrier_cargo) == 0
+    assert plugin.carrier_cargo.get("old_item") == 100
 
     print("[PASS] CAPI fleetcarrier handles empty/null data")
+
+
+def test_capi_fleetcarrier_discards_lower_amounts():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 500, "steel": 100}
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 200},
+            {"commodity": "Steel", "quantity": 300},
+            {"commodity": "Gold", "quantity": 50},
+        ],
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 500
+    assert plugin.carrier_cargo.get("steel") == 300
+    assert plugin.carrier_cargo.get("gold") == 50
+
+    print("[PASS] CAPI fleetcarrier discards updates with lower amounts")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1193,6 +1213,7 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
+    test_capi_fleetcarrier_discards_lower_amounts()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()

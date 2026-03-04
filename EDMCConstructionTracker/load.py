@@ -822,7 +822,7 @@ def capi_fleetcarrier(data) -> None:
 def _process_capi_carrier_cargo(data) -> None:
     global carrier_cargo
 
-    carrier_cargo.clear()
+    new_cargo: Dict[str, int] = {}
 
     cargo_section = data.get("cargo", [])
     logger.info(f"CAPI cargo type: {type(cargo_section).__name__}, value preview: {str(cargo_section)[:500]}")
@@ -838,7 +838,7 @@ def _process_capi_carrier_cargo(data) -> None:
         name_key = _normalize_name(name_raw)
         qty = _safe_int(item.get("quantity", 0) or item.get("qty", 0))
         if name_key and qty > 0:
-            carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + qty
+            new_cargo[name_key] = new_cargo.get(name_key, 0) + qty
 
     orders = data.get("orders", {})
     if isinstance(orders, dict):
@@ -851,8 +851,8 @@ def _process_capi_carrier_cargo(data) -> None:
                 name_raw = item.get("commodity", "") or item.get("name", "")
                 name_key = _normalize_name(name_raw)
                 outstanding = _safe_int(item.get("stock", 0) or item.get("outstanding", 0) or item.get("quantity", 0))
-                if name_key and outstanding > 0 and name_key not in carrier_cargo:
-                    carrier_cargo[name_key] = outstanding
+                if name_key and outstanding > 0 and name_key not in new_cargo:
+                    new_cargo[name_key] = outstanding
 
     market = data.get("market", {})
     if isinstance(market, dict) and not orders:
@@ -863,7 +863,14 @@ def _process_capi_carrier_cargo(data) -> None:
             name_raw = item.get("commodity", "") or item.get("name", "")
             name_key = _normalize_name(name_raw)
             qty = _safe_int(item.get("stock", 0) or item.get("quantity", 0) or item.get("outstanding", 0))
-            if name_key and qty > 0 and name_key not in carrier_cargo:
-                carrier_cargo[name_key] = qty
+            if name_key and qty > 0 and name_key not in new_cargo:
+                new_cargo[name_key] = qty
 
-    logger.info(f"CAPI carrier cargo parsed: {dict(carrier_cargo)}")
+    for name_key, new_qty in new_cargo.items():
+        current_qty = carrier_cargo.get(name_key, 0)
+        if new_qty >= current_qty:
+            carrier_cargo[name_key] = new_qty
+        else:
+            logger.info(f"CAPI update discarded for {name_key}: CAPI={new_qty} < current={current_qty}")
+
+    logger.info(f"CAPI carrier cargo after merge: {dict(carrier_cargo)}")
