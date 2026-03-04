@@ -1172,6 +1172,87 @@ def test_hide_completed_materials():
     print("[PASS] Hide completed materials setting toggles correctly")
 
 
+def test_ship_cargo_affects_completion():
+    _reset_plugin()
+    plugin.carrier_cargo = {"aluminium": 100}
+    plugin.ship_cargo = {"aluminium": 50}
+
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 9999,
+        "ConstructionProgress": 0.2,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 500,
+                "ProvidedAmount": 200,
+                "Payment": 1000,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry, "Ship Test", "Sol")
+
+    mat = plugin.construction_sites[9999]["materials"][0]
+    assert mat["ship"] == 50
+    assert mat["carrier"] == 100
+    assert mat["completion"] == 150
+
+    plugin.ship_cargo = {"aluminium": 100}
+    plugin._update_ship_amounts()
+    mat = plugin.construction_sites[9999]["materials"][0]
+    assert mat["ship"] == 100
+    assert mat["completion"] == 100
+
+    print("[PASS] Ship cargo affects completion calculation")
+
+
+def test_cargo_event_updates_ship_amounts_in_sites():
+    _reset_plugin()
+    plugin.carrier_cargo = {"steel": 50}
+
+    depot_entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 8888,
+        "ConstructionProgress": 0.1,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 300,
+                "ProvidedAmount": 100,
+                "Payment": 500,
+            },
+        ],
+    }
+    plugin._process_construction_depot(depot_entry, "Cargo Test", "Sol")
+
+    mat = plugin.construction_sites[8888]["materials"][0]
+    assert mat["ship"] == 0
+    assert mat["completion"] == 150
+
+    cargo_entry = {
+        "event": "Cargo",
+        "Vessel": "Ship",
+        "Count": 1,
+        "Inventory": [
+            {"Name": "steel", "Count": 75},
+        ],
+    }
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sys", "Stn", cargo_entry, state)
+
+    mat = plugin.construction_sites[8888]["materials"][0]
+    assert mat["ship"] == 75
+    assert mat["completion"] == 75
+
+    print("[PASS] Cargo event updates ship amounts in construction sites")
+
+
 def test_hide_completed_persisted():
     _reset_plugin()
     plugin.hide_completed_materials = False
@@ -1230,6 +1311,8 @@ if __name__ == "__main__":
     test_save_and_load_data()
     test_persistence_across_restart()
     test_split_camel_case()
+    test_ship_cargo_affects_completion()
+    test_cargo_event_updates_ship_amounts_in_sites()
     test_carrier_edit_updates_cargo()
     test_carrier_edit_zero_removes_from_cargo()
     test_carrier_edit_invalid_input_ignored()
