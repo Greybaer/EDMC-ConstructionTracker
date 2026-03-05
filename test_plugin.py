@@ -1417,6 +1417,43 @@ def test_selected_site_switches_on_removal():
     print("[PASS] Selected site switches to remaining site on removal")
 
 
+def test_startup_removes_complete_sites():
+    _reset_plugin()
+    plugin.construction_sites = {
+        1111: {
+            "display_name": "Complete Site",
+            "market_id": 1111,
+            "progress": 1.0,
+            "complete": False,
+            "failed": False,
+            "materials": [
+                {"name": "Steel", "name_key": "steel", "required": 100, "provided": 100, "carrier": 0, "ship": 0, "completion": 0},
+            ],
+            "station": "Test", "system": "Sol",
+            "site_type": "", "site_name": "", "parsed_system": "",
+        },
+        2222: {
+            "display_name": "Incomplete Site",
+            "market_id": 2222,
+            "progress": 0.5,
+            "complete": False,
+            "failed": False,
+            "materials": [
+                {"name": "Aluminium", "name_key": "aluminium", "required": 200, "provided": 50, "carrier": 0, "ship": 0, "completion": 150},
+            ],
+            "station": "Test2", "system": "Alpha Centauri",
+            "site_type": "", "site_name": "", "parsed_system": "",
+        },
+    }
+    plugin.selected_site_id = 1111
+    plugin._cleanup_complete_sites()
+
+    assert 1111 not in plugin.construction_sites
+    assert 2222 in plugin.construction_sites
+    assert plugin.selected_site_id == 2222
+    print("[PASS] Startup cleanup removes fully delivered sites")
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -1469,5 +1506,6 @@ if __name__ == "__main__":
     test_complete_site_removed_on_depot_event()
     test_incomplete_site_not_removed()
     test_selected_site_switches_on_removal()
+    test_startup_removes_complete_sites()
 
     print(f"\nAll tests passed!")

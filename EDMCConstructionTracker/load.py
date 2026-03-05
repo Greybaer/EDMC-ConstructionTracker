@@ -139,6 +139,7 @@ def plugin_start3(plugin_dir_path: str) -> str:
         _load_carrier_cargo()
         _update_carrier_amounts()
         _save_data()
+    _cleanup_complete_sites()
     logger.info(f"{plugin_name} v{plugin_version} started")
     return plugin_name
 
@@ -553,6 +554,26 @@ def _check_site_complete(market_id: int) -> bool:
         _save_data()
         return True
     return False
+
+
+def _cleanup_complete_sites() -> None:
+    global selected_site_id
+    complete_ids = [
+        mid for mid, site in construction_sites.items()
+        if site.get("materials") and all(m["provided"] >= m["required"] for m in site["materials"])
+    ]
+    if not complete_ids:
+        return
+    for mid in complete_ids:
+        display_name = construction_sites[mid].get("display_name", str(mid))
+        logger.info(f"Startup cleanup: removing fully delivered site: {display_name}")
+        del construction_sites[mid]
+    if selected_site_id not in construction_sites:
+        if construction_sites:
+            selected_site_id = next(iter(construction_sites))
+        else:
+            selected_site_id = None
+    _save_data()
 
 
 def _update_carrier_amounts() -> None:
