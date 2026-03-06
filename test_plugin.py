@@ -24,6 +24,7 @@ def _reset_plugin():
     plugin.carrier_cargo.clear()
     plugin.ship_cargo.clear()
     plugin.pending_transfers.clear()
+    plugin.station_commodities.clear()
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.plugin_dir = _test_tmpdir
@@ -1454,6 +1455,81 @@ def test_startup_removes_complete_sites():
     print("[PASS] Startup cleanup removes fully delivered sites")
 
 
+def test_market_event_loads_commodities():
+    _reset_plugin()
+    market_data = {
+        "Items": [
+            {"Name": "$steel_name;", "Name_Localised": "Steel"},
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium"},
+            {"Name": "$copper_name;", "Name_Localised": "Copper"},
+        ]
+    }
+    market_path = os.path.join(_test_tmpdir, "Market.json")
+    with open(market_path, "w") as f:
+        json.dump(market_data, f)
+
+    plugin.journal_dir = _test_tmpdir
+    entry = {"event": "Market", "MarketID": 12345, "StationName": "Test Station"}
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sol", "Test Station", entry, state)
+
+    assert "steel" in plugin.station_commodities
+    assert "aluminium" in plugin.station_commodities
+    assert "copper" in plugin.station_commodities
+    assert len(plugin.station_commodities) == 3
+    print("[PASS] Market event loads station commodities")
+
+
+def test_undocked_event_clears_commodities():
+    _reset_plugin()
+    plugin.station_commodities = {"steel", "aluminium", "copper"}
+
+    entry = {"event": "Undocked", "StationName": "Test Station"}
+    state = {"JournalDir": _test_tmpdir}
+    plugin.journal_entry("Cmdr", False, "Sol", "Test Station", entry, state)
+
+    assert len(plugin.station_commodities) == 0
+    print("[PASS] Undocked event clears station commodities")
+
+
+def test_market_commodities_affect_material_color():
+    _reset_plugin()
+    plugin.station_commodities = {"steel"}
+
+    entry = {
+        "event": "ColonisationConstructionDepot",
+        "MarketID": 9876,
+        "ConstructionProgress": 0.3,
+        "ConstructionComplete": False,
+        "ConstructionFailed": False,
+        "ResourcesRequired": [
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 500,
+                "ProvidedAmount": 100,
+                "Payment": 1000,
+            },
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 300,
+                "ProvidedAmount": 50,
+                "Payment": 500,
+            },
+        ],
+    }
+    plugin._process_construction_depot(entry, "Test Site", "Sol")
+
+    materials = plugin.construction_sites[9876]["materials"]
+    steel = [m for m in materials if m["name_key"] == "steel"][0]
+    aluminium = [m for m in materials if m["name_key"] == "aluminium"][0]
+
+    assert steel["name_key"] in plugin.station_commodities
+    assert aluminium["name_key"] not in plugin.station_commodities
+    print("[PASS] Market commodities correctly flag matching materials for highlight")
+
+
 if __name__ == "__main__":
     print("Running Construction Tracker Plugin Tests\n")
 
@@ -1507,5 +1583,9 @@ if __name__ == "__main__":
     test_incomplete_site_not_removed()
     test_selected_site_switches_on_removal()
     test_startup_removes_complete_sites()
+
+    test_market_event_loads_commodities()
+    test_undocked_event_clears_commodities()
+    test_market_commodities_affect_material_color()
 
     print(f"\nAll tests passed!")

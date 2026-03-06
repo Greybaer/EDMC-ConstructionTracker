@@ -43,6 +43,7 @@ selected_site_id: Optional[int] = None
 journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
+station_commodities: set = set()
 
 frame = None
 site_selector = None
@@ -67,6 +68,7 @@ VALUE_FG_DARK = "#ffffff"
 COMPLETE_GREEN = "#4ec94e"
 PENDING_YELLOW = "#daa520"
 INCOMPLETE_ORANGE = "#ff8c00"
+MARKET_BLUE = "#4dc8ff"
 
 SAVE_FILE = "construction_tracker_data.json"
 
@@ -331,6 +333,34 @@ def _load_carrier_cargo() -> bool:
         return True
     except Exception as e:
         logger.error(f"Error loading FCMaterials.json: {e}")
+        return False
+
+
+def _load_market_commodities() -> bool:
+    global station_commodities
+    if not journal_dir:
+        return False
+
+    market_path = os.path.join(journal_dir, "Market.json")
+    if not os.path.exists(market_path):
+        logger.debug(f"Market.json not found at {market_path}")
+        return False
+
+    try:
+        with open(market_path, "r") as f:
+            data = json.load(f)
+
+        items = data.get("Items", [])
+        station_commodities = set()
+        for item in items:
+            raw_name = item.get("Name", "")
+            name_key = _normalize_name(raw_name)
+            if name_key:
+                station_commodities.add(name_key)
+        logger.info(f"Loaded market commodities: {len(station_commodities)} items")
+        return True
+    except Exception as e:
+        logger.error(f"Error loading Market.json: {e}")
         return False
 
 
@@ -768,6 +798,8 @@ def _render_materials(materials: List[Dict[str, Any]]) -> None:
             fg_color = COMPLETE_GREEN
         elif mat["completion"] == 0 and mat.get("carrier", 0) > 0:
             fg_color = PENDING_YELLOW
+        elif station_commodities and mat.get("name_key", "") in station_commodities:
+            fg_color = MARKET_BLUE
         else:
             fg_color = INCOMPLETE_ORANGE
 
@@ -852,6 +884,16 @@ def journal_entry(
             _validate_pending_transfers()
         _update_ship_amounts()
         _save_data()
+        if selected_site_id:
+            _update_display()
+
+    elif event_name == "Market":
+        _load_market_commodities()
+        if selected_site_id:
+            _update_display()
+
+    elif event_name == "Undocked":
+        station_commodities.clear()
         if selected_site_id:
             _update_display()
 

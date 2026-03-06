@@ -50,7 +50,7 @@ The `_normalize_name()` function handles all commodity name formats consistently
 - `tk.OptionMenu` for site selection dropdown
 - Type: and System: info lines below the site selector showing parsed station name components
 - Grid-based material table showing Required, Provided, Carrier, Ship, and Remaining columns
-- Color coding: green for fully delivered (remaining=0, provided>=required), yellow/goldenrod (#daa520) for pending delivery (remaining=0 but carrier>0, not yet delivered), orange for incomplete materials
+- Color coding: green for fully delivered (remaining=0, provided>=required), yellow/goldenrod (#daa520) for pending delivery (remaining=0 but carrier>0, not yet delivered), light blue (#4dc8ff) for incomplete materials available at the docked station's market, orange for incomplete materials
 - Theme-aware colors via `_is_dark_theme()` helper (reads `config.get_int('theme')`), refreshed on every `_update_display()` call:
   - **Default theme (0)**: Labels (Title, Site, Type, System, Progress, material headers) are black; Type/System value strings are black; Progress value is black
   - **Dark (1) / Transparent (2) themes**: Labels are orange (#ff8c00); Type/System value strings are white; Progress value is white
@@ -69,6 +69,8 @@ The `_split_camel_case()` function splits CamelCase type names (e.g., "OrbitalSt
 - `ColonisationContribution` — Updates material delivery counts in real-time
 - `CargoTransfer` — Incrementally adjusts carrier cargo (`tocarrier` adds, `toship` subtracts), buffers transfer for validation
 - `Cargo` — Updates ship cargo inventory, validates any pending CargoTransfer amounts against actual ship delta, corrects carrier cargo if mismatched
+- `Market` — Loads station commodity list from Market.json; materials available at the docked station display in light blue
+- `Undocked` — Clears station commodity data so market-based highlighting reverts to default colors
 
 ### Completion Calculation
 `CompletionAmount = RequiredAmount - (ProvidedAmount + CarrierAmount + ShipAmount)` — This tells the player how much more of each material still needs to be collected. Materials turn green only when both remaining is zero AND provided equals or exceeds required (fully delivered), yellow/goldenrod when remaining is zero but carrier has stock (pending delivery), staying orange when incomplete.
@@ -94,7 +96,7 @@ The plugin uses only Python standard library modules (`json`, `os`, `logging`, `
 - Tests use Python's built-in `unittest.mock` and `tempfile` modules
 - Tests import the plugin module directly and reset state between test cases
 - No test framework beyond the standard library is required
-- 47 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data, lower-amount discard), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), ship cargo in completion calculation, Cargo event updates ship amounts in sites, sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site auto-removal (on contribution, on depot event, incomplete not removed, selected site switches)
+- 51 tests covering core logic, event handling, CAPI data (list format, dict format, duplicate entries, sales orders, empty data, lower-amount discard), CargoTransfer tracking (tocarrier, toship, construction site updates), carrier cargo persistence, ship cargo tracking (Inventory and Cargo.json), ship cargo in completion calculation, Cargo event updates ship amounts in sites, sanity check validation (tocarrier correction, toship correction, no-correction, multiple same-commodity transfers, mixed directions), FCMaterials loading, LoadGame carrier reload, Docked does not reload, startup always reloads FCMaterials, name normalization, station name parsing, camel case splitting, editable carrier amounts (update, zero removal, invalid input), hide completed materials, persistence, site auto-removal (on contribution, on depot event, incomplete not removed, selected site switches), market commodity loading, undocked clears commodities, market commodities affect material highlighting
 
 ## Recent Changes
 - 2026-03-04: Construction sites auto-removed when all materials fully delivered (provided >= required)
