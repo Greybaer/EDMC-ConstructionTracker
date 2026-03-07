@@ -353,10 +353,12 @@ def _load_market_commodities() -> bool:
         items = data.get("Items", [])
         station_commodities = set()
         for item in items:
-            raw_name = item.get("Name", "")
-            name_key = _normalize_name(raw_name)
-            if name_key:
-                station_commodities.add(name_key)
+            stock = item.get("Stock", 0)
+            if stock > 0:
+                raw_name = item.get("Name", "")
+                name_key = _normalize_name(raw_name)
+                if name_key:
+                    station_commodities.add(name_key)
         logger.info(f"Loaded market commodities: {len(station_commodities)} items")
         return True
     except Exception as e:

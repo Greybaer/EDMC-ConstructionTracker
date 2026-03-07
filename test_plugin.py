@@ -1459,9 +1459,10 @@ def test_market_event_loads_commodities():
     _reset_plugin()
     market_data = {
         "Items": [
-            {"Name": "$steel_name;", "Name_Localised": "Steel"},
-            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium"},
-            {"Name": "$copper_name;", "Name_Localised": "Copper"},
+            {"Name": "$steel_name;", "Name_Localised": "Steel", "Stock": 1000},
+            {"Name": "$aluminium_name;", "Name_Localised": "Aluminium", "Stock": 500},
+            {"Name": "$copper_name;", "Name_Localised": "Copper", "Stock": 0},
+            {"Name": "$gold_name;", "Name_Localised": "Gold", "Stock": 200},
         ]
     }
     market_path = os.path.join(_test_tmpdir, "Market.json")
@@ -1475,9 +1476,10 @@ def test_market_event_loads_commodities():
 
     assert "steel" in plugin.station_commodities
     assert "aluminium" in plugin.station_commodities
-    assert "copper" in plugin.station_commodities
+    assert "copper" not in plugin.station_commodities
+    assert "gold" in plugin.station_commodities
     assert len(plugin.station_commodities) == 3
-    print("[PASS] Market event loads station commodities")
+    print("[PASS] Market event loads station commodities with stock > 0 only")
 
 
 def test_undocked_event_clears_commodities():
