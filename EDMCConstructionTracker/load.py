@@ -34,6 +34,31 @@ plugin_name = "Construction Tracker"
 plugin_version = "1.3.0"
 
 logger = logging.getLogger(f"{plugin_name}")
+logger.setLevel(logging.DEBUG)
+
+
+def _setup_logging(log_dir: str) -> None:
+    for handler in logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            handler.close()
+            logger.removeHandler(handler)
+
+    log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    info_path = os.path.join(log_dir, "Tracker.log")
+    info_handler = logging.FileHandler(info_path, mode="a", encoding="utf-8")
+    info_handler.setLevel(logging.INFO)
+    info_handler.addFilter(lambda record: record.levelno == logging.INFO)
+    info_handler.setFormatter(log_format)
+
+    debug_path = os.path.join(log_dir, "Tracker.debug")
+    debug_handler = logging.FileHandler(debug_path, mode="a", encoding="utf-8")
+    debug_handler.setLevel(logging.DEBUG)
+    debug_handler.addFilter(lambda record: record.levelno != logging.INFO)
+    debug_handler.setFormatter(log_format)
+
+    logger.addHandler(info_handler)
+    logger.addHandler(debug_handler)
 
 carrier_cargo: Dict[str, int] = {}
 ship_cargo: Dict[str, int] = {}
@@ -135,6 +160,7 @@ def _init_journal_dir() -> None:
 def plugin_start3(plugin_dir_path: str) -> str:
     global plugin_dir
     plugin_dir = plugin_dir_path
+    _setup_logging(plugin_dir)
     _load_data()
     _init_journal_dir()
     if journal_dir:
