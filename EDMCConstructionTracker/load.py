@@ -69,6 +69,7 @@ journal_dir: Optional[str] = None
 plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
 station_commodities: set = set()
+capi_received: bool = False
 
 frame = None
 site_selector = None
@@ -880,7 +881,7 @@ def journal_entry(
     entry: Dict[str, Any],
     state: Dict[str, Any],
 ) -> None:
-    global journal_dir
+    global journal_dir, capi_received
 
     if journal_dir is None:
         jdir = state.get("JournalDir")
@@ -892,6 +893,7 @@ def journal_entry(
     event_name = entry.get("event", "")
 
     if event_name == "LoadGame":
+        capi_received = False
         if journal_dir:
             _load_carrier_cargo()
             _update_carrier_amounts()
@@ -953,16 +955,22 @@ def journal_entry(
 
 
 def capi_fleetcarrier(data) -> None:
+    global capi_received
     if not data:
         return
 
-    logger.info(f"CAPI fleetcarrier called, top-level keys: {list(data.keys()) if hasattr(data, 'keys') else type(data)}")
+    if capi_received:
+        logger.info("CAPI fleetcarrier query ignored (already received initial data)")
+        return
+
+    logger.info(f"CAPI fleetcarrier called (first query), top-level keys: {list(data.keys()) if hasattr(data, 'keys') else type(data)}")
     _process_capi_carrier_cargo(data)
+    capi_received = True
     _update_carrier_amounts()
     _save_data()
     if selected_site_id:
         _update_display()
-    logger.info(f"Updated carrier cargo from CAPI: {len(carrier_cargo)} items: {dict(carrier_cargo)}")
+    logger.info(f"Set carrier cargo from CAPI: {len(carrier_cargo)} items: {dict(carrier_cargo)}")
 
 
 def _process_capi_carrier_cargo(data) -> None:
@@ -1012,11 +1020,5 @@ def _process_capi_carrier_cargo(data) -> None:
             if name_key and qty > 0 and name_key not in new_cargo:
                 new_cargo[name_key] = qty
 
-    for name_key, new_qty in new_cargo.items():
-        current_qty = carrier_cargo.get(name_key, 0)
-        if new_qty >= current_qty:
-            carrier_cargo[name_key] = new_qty
-        else:
-            logger.info(f"CAPI update discarded for {name_key}: CAPI={new_qty} < current={current_qty}")
-
-    logger.info(f"CAPI carrier cargo after merge: {dict(carrier_cargo)}")
+    carrier_cargo = new_cargo
+    logger.info(f"CAPI carrier cargo set: {dict(carrier_cargo)}")

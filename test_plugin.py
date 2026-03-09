@@ -27,6 +27,7 @@ def _reset_plugin():
     plugin.station_commodities.clear()
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
+    plugin.capi_received = False
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -521,32 +522,59 @@ def test_capi_fleetcarrier_empty_data():
 
     plugin.capi_fleetcarrier(None)
     assert plugin.carrier_cargo.get("old_item") == 100
+    assert plugin.capi_received is False
 
     capi_data = {"cargo": [], "orders": {"commodities": {"sales": {}, "purchases": {}}}}
     plugin.capi_fleetcarrier(capi_data)
-    assert plugin.carrier_cargo.get("old_item") == 100
+    assert plugin.carrier_cargo.get("old_item") is None
+    assert plugin.capi_received is True
 
     print("[PASS] CAPI fleetcarrier handles empty/null data")
 
 
-def test_capi_fleetcarrier_discards_lower_amounts():
+def test_capi_fleetcarrier_first_query_replaces_cargo():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 500, "steel": 100}
 
     capi_data = {
         "cargo": [
             {"commodity": "Aluminium", "quantity": 200},
-            {"commodity": "Steel", "quantity": 300},
             {"commodity": "Gold", "quantity": 50},
         ],
     }
     plugin.capi_fleetcarrier(capi_data)
 
-    assert plugin.carrier_cargo.get("aluminium") == 500
-    assert plugin.carrier_cargo.get("steel") == 300
+    assert plugin.carrier_cargo.get("aluminium") == 200
     assert plugin.carrier_cargo.get("gold") == 50
+    assert "steel" not in plugin.carrier_cargo
+    assert plugin.capi_received is True
 
-    print("[PASS] CAPI fleetcarrier discards updates with lower amounts")
+    print("[PASS] CAPI fleetcarrier first query fully replaces carrier cargo")
+
+
+def test_capi_fleetcarrier_subsequent_queries_ignored():
+    _reset_plugin()
+
+    first_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 200},
+        ],
+    }
+    plugin.capi_fleetcarrier(first_data)
+    assert plugin.carrier_cargo.get("aluminium") == 200
+
+    second_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 999},
+            {"commodity": "Steel", "quantity": 500},
+        ],
+    }
+    plugin.capi_fleetcarrier(second_data)
+
+    assert plugin.carrier_cargo.get("aluminium") == 200
+    assert "steel" not in plugin.carrier_cargo
+
+    print("[PASS] CAPI fleetcarrier ignores subsequent queries")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1554,7 +1582,8 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_sales_orders()
     test_capi_fleetcarrier_string_values()
     test_capi_fleetcarrier_empty_data()
-    test_capi_fleetcarrier_discards_lower_amounts()
+    test_capi_fleetcarrier_first_query_replaces_cargo()
+    test_capi_fleetcarrier_subsequent_queries_ignored()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
