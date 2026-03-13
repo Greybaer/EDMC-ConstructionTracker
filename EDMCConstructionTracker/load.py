@@ -717,6 +717,13 @@ def _update_display() -> None:
 
     _refresh_label_colors()
 
+    if fc_capacity_value_label:
+        used = sum(carrier_cargo.values())
+        if carrier_capacity is not None:
+            fc_capacity_value_label.config(text=f"{used:,} / {carrier_capacity:,}")
+        else:
+            fc_capacity_value_label.config(text=f"{used:,} / --")
+
     if not selected_site_id or selected_site_id not in construction_sites:
         progress_var.set("--")
         status_var.set("Waiting for construction site data...")
@@ -743,13 +750,6 @@ def _update_display() -> None:
         total_materials = len(site_data["materials"])
         completed_materials = sum(1 for m in site_data["materials"] if m["completion"] == 0 and m["provided"] >= m["required"])
         status_var.set(f"{completed_materials}/{total_materials} materials fulfilled")
-
-    if fc_capacity_value_label:
-        used = sum(carrier_cargo.values())
-        if carrier_capacity is not None:
-            fc_capacity_value_label.config(text=f"{used:,} / {carrier_capacity:,}")
-        else:
-            fc_capacity_value_label.config(text=f"{used:,} / --")
 
     _render_materials(site_data["materials"])
 
