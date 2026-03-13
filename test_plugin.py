@@ -28,6 +28,7 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.capi_received = False
+    plugin.carrier_capacity = None
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -575,6 +576,30 @@ def test_capi_fleetcarrier_subsequent_queries_ignored():
     assert "steel" not in plugin.carrier_cargo
 
     print("[PASS] CAPI fleetcarrier ignores subsequent queries")
+
+
+def test_capi_fleetcarrier_capacity_parsed():
+    _reset_plugin()
+
+    capi_data = {
+        "cargo": [
+            {"commodity": "Aluminium", "quantity": 500},
+            {"commodity": "Steel", "quantity": 300},
+        ],
+        "capacity": {
+            "capacity": 25000,
+            "freeSpace": 24200,
+            "usedSpace": 800,
+            "reservedSpace": 0,
+        },
+    }
+    plugin.capi_fleetcarrier(capi_data)
+
+    assert plugin.carrier_capacity == 25000
+    assert plugin.carrier_cargo.get("aluminium") == 500
+    assert plugin.carrier_cargo.get("steel") == 300
+
+    print("[PASS] CAPI fleetcarrier capacity parsed correctly")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1584,6 +1609,7 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_empty_data()
     test_capi_fleetcarrier_first_query_replaces_cargo()
     test_capi_fleetcarrier_subsequent_queries_ignored()
+    test_capi_fleetcarrier_capacity_parsed()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()

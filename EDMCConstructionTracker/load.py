@@ -70,6 +70,7 @@ plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
 station_commodities: set = set()
 capi_received: bool = False
+carrier_capacity: Optional[int] = None
 
 frame = None
 site_selector = None
@@ -86,6 +87,8 @@ system_value_label = None
 progress_label_widget = None
 progress_value_widget = None
 status_label_widget = None
+fc_capacity_label = None
+fc_capacity_value_label = None
 
 LABEL_FG_DEFAULT = "#000000"
 LABEL_FG_DARK = "#ff8c00"
@@ -182,6 +185,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     global frame, site_selector, site_var, progress_var, material_frame, status_var
     global header_label, site_label, progress_label_widget, progress_value_widget, status_label_widget
     global type_label, type_value_label, system_label, system_value_label
+    global fc_capacity_label, fc_capacity_value_label
 
     frame = tk.Frame(parent)
 
@@ -214,10 +218,15 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
 
     status_var = tk.StringVar(value="Waiting for construction site data...")
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
-    status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 4))
+    status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
+
+    fc_capacity_label = tk.Label(frame, text="Fleet Carrier Capacity:", font=("Helvetica", 8), fg=_label_fg())
+    fc_capacity_label.grid(row=6, column=0, sticky=tk.W)
+    fc_capacity_value_label = tk.Label(frame, text="--", font=("Helvetica", 8), fg=_value_fg())
+    fc_capacity_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 4))
 
     material_frame = tk.Frame(frame)
-    material_frame.grid(row=6, column=0, columnspan=3, sticky=tk.W)
+    material_frame.grid(row=7, column=0, columnspan=3, sticky=tk.W)
 
     if construction_sites:
         _update_site_selector()
@@ -696,6 +705,10 @@ def _refresh_label_colors() -> None:
         progress_label_widget.config(fg=label_color)
     if progress_value_widget:
         progress_value_widget.config(fg=value_color)
+    if fc_capacity_label:
+        fc_capacity_label.config(fg=label_color)
+    if fc_capacity_value_label:
+        fc_capacity_value_label.config(fg=value_color)
 
 
 def _update_display() -> None:
@@ -730,6 +743,13 @@ def _update_display() -> None:
         total_materials = len(site_data["materials"])
         completed_materials = sum(1 for m in site_data["materials"] if m["completion"] == 0 and m["provided"] >= m["required"])
         status_var.set(f"{completed_materials}/{total_materials} materials fulfilled")
+
+    if fc_capacity_value_label:
+        used = sum(carrier_cargo.values())
+        if carrier_capacity is not None:
+            fc_capacity_value_label.config(text=f"{used:,} / {carrier_capacity:,}")
+        else:
+            fc_capacity_value_label.config(text=f"{used:,} / --")
 
     _render_materials(site_data["materials"])
 
@@ -974,7 +994,14 @@ def capi_fleetcarrier(data) -> None:
 
 
 def _process_capi_carrier_cargo(data) -> None:
-    global carrier_cargo
+    global carrier_cargo, carrier_capacity
+
+    capacity_section = data.get("capacity", {})
+    if isinstance(capacity_section, dict):
+        cap = capacity_section.get("capacity")
+        if cap is not None:
+            carrier_capacity = _safe_int(cap)
+            logger.info(f"CAPI carrier capacity: {carrier_capacity}")
 
     new_cargo: Dict[str, int] = {}
 
