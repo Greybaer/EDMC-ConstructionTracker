@@ -28,7 +28,8 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.capi_received = False
-    plugin.carrier_free_space = None
+    plugin.carrier_total_capacity = None
+    plugin.carrier_cargo_reserved = 0
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -595,14 +596,14 @@ def test_capi_fleetcarrier_capacity_parsed():
     }
     plugin.capi_fleetcarrier(capi_data)
 
-    assert plugin.carrier_free_space is None, "CAPI should not set carrier_free_space"
+    assert plugin.carrier_total_capacity is None, "CAPI should not set carrier_total_capacity"
     assert plugin.carrier_cargo.get("aluminium") == 500
     assert plugin.carrier_cargo.get("steel") == 300
 
     print("[PASS] CAPI fleetcarrier capacity parsed correctly")
 
 
-def test_carrier_stats_sets_free_space():
+def test_carrier_stats_saves_capacity_and_reserved():
     _reset_plugin()
 
     entry = {
@@ -621,11 +622,28 @@ def test_carrier_stats_sets_free_space():
     }
     plugin.journal_entry("Cmdr", False, "Sol", "", entry, {})
 
-    assert plugin.carrier_free_space == 25000 - 200 - 1050, (
-        f"Expected {25000 - 200 - 1050}, got {plugin.carrier_free_space}"
+    assert plugin.carrier_total_capacity == 25000, (
+        f"Expected 25000, got {plugin.carrier_total_capacity}"
+    )
+    assert plugin.carrier_cargo_reserved == 200, (
+        f"Expected 200, got {plugin.carrier_cargo_reserved}"
     )
 
-    print("[PASS] CarrierStats event sets carrier free space correctly")
+    print("[PASS] CarrierStats event saves total capacity and cargo reserved")
+
+
+def test_carrier_stats_remaining_uses_live_cargo():
+    _reset_plugin()
+
+    plugin.carrier_total_capacity = 25000
+    plugin.carrier_cargo_reserved = 500
+    plugin.carrier_cargo = {"aluminium": 1000, "steel": 2000}
+
+    expected = 25000 - 500 - 3000
+    actual = plugin.carrier_total_capacity - plugin.carrier_cargo_reserved - sum(plugin.carrier_cargo.values())
+    assert actual == expected, f"Expected {expected}, got {actual}"
+
+    print("[PASS] Remaining cargo space computed live from carrier_cargo")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1636,7 +1654,8 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_first_query_replaces_cargo()
     test_capi_fleetcarrier_subsequent_queries_ignored()
     test_capi_fleetcarrier_capacity_parsed()
-    test_carrier_stats_sets_free_space()
+    test_carrier_stats_saves_capacity_and_reserved()
+    test_carrier_stats_remaining_uses_live_cargo()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()

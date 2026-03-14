@@ -70,7 +70,8 @@ plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
 station_commodities: set = set()
 capi_received: bool = False
-carrier_free_space: Optional[int] = None
+carrier_total_capacity: Optional[int] = None
+carrier_cargo_reserved: int = 0
 
 frame = None
 site_selector = None
@@ -118,6 +119,8 @@ def _save_data() -> None:
             "selected_site_id": selected_site_id,
             "construction_sites": {str(k): v for k, v in construction_sites.items()},
             "carrier_cargo": carrier_cargo,
+            "carrier_total_capacity": carrier_total_capacity,
+            "carrier_cargo_reserved": carrier_cargo_reserved,
         }
         with open(path, "w") as f:
             json.dump(save_obj, f, indent=2)
@@ -127,7 +130,7 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global hide_completed_materials, selected_site_id, construction_sites, carrier_cargo
+    global hide_completed_materials, selected_site_id, construction_sites, carrier_cargo, carrier_total_capacity, carrier_cargo_reserved
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
@@ -143,6 +146,10 @@ def _load_data() -> None:
         saved_cargo = save_obj.get("carrier_cargo", {})
         carrier_cargo.clear()
         carrier_cargo.update(saved_cargo)
+        saved_cap = save_obj.get("carrier_total_capacity")
+        if saved_cap is not None:
+            carrier_total_capacity = int(saved_cap)
+        carrier_cargo_reserved = int(save_obj.get("carrier_cargo_reserved", 0))
         logger.info(f"Loaded {len(construction_sites)} construction sites, {len(carrier_cargo)} carrier cargo items from save")
     except Exception as e:
         logger.error(f"Error loading data: {e}")
@@ -720,8 +727,9 @@ def _update_display() -> None:
     _refresh_label_colors()
 
     if fc_capacity_value_label and fc_capacity_label:
-        if carrier_free_space is not None:
-            fc_capacity_value_label.config(text=f"{carrier_free_space:,}")
+        if carrier_total_capacity is not None:
+            remaining = carrier_total_capacity - carrier_cargo_reserved - sum(carrier_cargo.values())
+            fc_capacity_value_label.config(text=f"{remaining:,}")
             fc_capacity_label.grid()
             fc_capacity_value_label.grid()
         else:
@@ -905,7 +913,7 @@ def journal_entry(
     entry: Dict[str, Any],
     state: Dict[str, Any],
 ) -> None:
-    global journal_dir, capi_received, carrier_free_space
+    global journal_dir, capi_received, carrier_total_capacity, carrier_cargo_reserved
 
     if journal_dir is None:
         jdir = state.get("JournalDir")
@@ -954,11 +962,11 @@ def journal_entry(
     elif event_name == "CarrierStats":
         space = entry.get("SpaceUsage", {})
         total = space.get("TotalCapacity")
-        cargo_reserved = space.get("CargoReserved", 0)
-        cargo = space.get("Cargo", 0)
         if total is not None:
-            carrier_free_space = int(total) - int(cargo_reserved) - int(cargo)
-            logger.info(f"CarrierStats: free space = {carrier_free_space} (total={total}, reserved={cargo_reserved}, cargo={cargo})")
+            carrier_total_capacity = int(total)
+            carrier_cargo_reserved = int(space.get("CargoReserved", 0))
+            logger.info(f"CarrierStats: total={carrier_total_capacity}, reserved={carrier_cargo_reserved}")
+            _save_data()
             _update_display()
 
     elif event_name == "ColonisationConstructionDepot":
