@@ -222,8 +222,10 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
 
     fc_capacity_label = tk.Label(frame, text="Remaining Cargo Space:", font=("Helvetica", 8), fg=_label_fg())
     fc_capacity_label.grid(row=6, column=0, sticky=tk.W)
-    fc_capacity_value_label = tk.Label(frame, text="--", font=("Helvetica", 8), fg=_value_fg())
+    fc_capacity_value_label = tk.Label(frame, text="", font=("Helvetica", 8), fg=_value_fg())
     fc_capacity_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 4))
+    fc_capacity_label.grid_remove()
+    fc_capacity_value_label.grid_remove()
 
     material_frame = tk.Frame(frame)
     material_frame.grid(row=7, column=0, columnspan=3, sticky=tk.W)
@@ -717,11 +719,14 @@ def _update_display() -> None:
 
     _refresh_label_colors()
 
-    if fc_capacity_value_label:
+    if fc_capacity_value_label and fc_capacity_label:
         if carrier_free_space is not None:
             fc_capacity_value_label.config(text=f"{carrier_free_space:,}")
+            fc_capacity_label.grid()
+            fc_capacity_value_label.grid()
         else:
-            fc_capacity_value_label.config(text="--")
+            fc_capacity_label.grid_remove()
+            fc_capacity_value_label.grid_remove()
 
     if not selected_site_id or selected_site_id not in construction_sites:
         progress_var.set("--")
