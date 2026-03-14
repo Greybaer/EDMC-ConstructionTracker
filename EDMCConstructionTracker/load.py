@@ -70,7 +70,7 @@ plugin_dir: Optional[str] = None
 hide_completed_materials: bool = False
 station_commodities: set = set()
 capi_received: bool = False
-carrier_capacity: Optional[int] = None
+carrier_free_space: Optional[int] = None
 
 frame = None
 site_selector = None
@@ -220,7 +220,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
     status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
 
-    fc_capacity_label = tk.Label(frame, text="Fleet Carrier Capacity:", font=("Helvetica", 8), fg=_label_fg())
+    fc_capacity_label = tk.Label(frame, text="Remaining Cargo Space:", font=("Helvetica", 8), fg=_label_fg())
     fc_capacity_label.grid(row=6, column=0, sticky=tk.W)
     fc_capacity_value_label = tk.Label(frame, text="--", font=("Helvetica", 8), fg=_value_fg())
     fc_capacity_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 4))
@@ -718,11 +718,10 @@ def _update_display() -> None:
     _refresh_label_colors()
 
     if fc_capacity_value_label:
-        used = sum(carrier_cargo.values())
-        if carrier_capacity is not None:
-            fc_capacity_value_label.config(text=f"{used:,} / {carrier_capacity:,}")
+        if carrier_free_space is not None:
+            fc_capacity_value_label.config(text=f"{carrier_free_space:,}")
         else:
-            fc_capacity_value_label.config(text=f"{used:,} / --")
+            fc_capacity_value_label.config(text="--")
 
     if not selected_site_id or selected_site_id not in construction_sites:
         progress_var.set("--")
@@ -901,7 +900,7 @@ def journal_entry(
     entry: Dict[str, Any],
     state: Dict[str, Any],
 ) -> None:
-    global journal_dir, capi_received
+    global journal_dir, capi_received, carrier_free_space
 
     if journal_dir is None:
         jdir = state.get("JournalDir")
@@ -945,6 +944,16 @@ def journal_entry(
     elif event_name == "Undocked":
         station_commodities.clear()
         if selected_site_id:
+            _update_display()
+
+    elif event_name == "CarrierStats":
+        space = entry.get("SpaceUsage", {})
+        total = space.get("TotalCapacity")
+        cargo_reserved = space.get("CargoReserved", 0)
+        cargo = space.get("Cargo", 0)
+        if total is not None:
+            carrier_free_space = int(total) - int(cargo_reserved) - int(cargo)
+            logger.info(f"CarrierStats: free space = {carrier_free_space} (total={total}, reserved={cargo_reserved}, cargo={cargo})")
             _update_display()
 
     elif event_name == "ColonisationConstructionDepot":
@@ -994,14 +1003,7 @@ def capi_fleetcarrier(data) -> None:
 
 
 def _process_capi_carrier_cargo(data) -> None:
-    global carrier_cargo, carrier_capacity
-
-    capacity_section = data.get("capacity", {})
-    if isinstance(capacity_section, dict):
-        cap = capacity_section.get("capacity")
-        if cap is not None:
-            carrier_capacity = _safe_int(cap)
-            logger.info(f"CAPI carrier capacity: {carrier_capacity}")
+    global carrier_cargo
 
     new_cargo: Dict[str, int] = {}
 

@@ -28,7 +28,7 @@ def _reset_plugin():
     plugin.selected_site_id = None
     plugin.hide_completed_materials = False
     plugin.capi_received = False
-    plugin.carrier_capacity = None
+    plugin.carrier_free_space = None
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -595,11 +595,37 @@ def test_capi_fleetcarrier_capacity_parsed():
     }
     plugin.capi_fleetcarrier(capi_data)
 
-    assert plugin.carrier_capacity == 25000
+    assert plugin.carrier_free_space is None, "CAPI should not set carrier_free_space"
     assert plugin.carrier_cargo.get("aluminium") == 500
     assert plugin.carrier_cargo.get("steel") == 300
 
     print("[PASS] CAPI fleetcarrier capacity parsed correctly")
+
+
+def test_carrier_stats_sets_free_space():
+    _reset_plugin()
+
+    entry = {
+        "event": "CarrierStats",
+        "SpaceUsage": {
+            "TotalCapacity": 25000,
+            "Crew": 930,
+            "Cargo": 1050,
+            "CargoReserved": 200,
+            "ShipPacks": 0,
+            "ModulePacks": 0,
+            "FreeSpace": 22820,
+            "Services": 0,
+            "Reserved": 1000,
+        },
+    }
+    plugin.journal_entry("Cmdr", False, "Sol", "", entry, {})
+
+    assert plugin.carrier_free_space == 25000 - 200 - 1050, (
+        f"Expected {25000 - 200 - 1050}, got {plugin.carrier_free_space}"
+    )
+
+    print("[PASS] CarrierStats event sets carrier free space correctly")
 
 
 def test_cargo_transfer_to_carrier():
@@ -1610,6 +1636,7 @@ if __name__ == "__main__":
     test_capi_fleetcarrier_first_query_replaces_cargo()
     test_capi_fleetcarrier_subsequent_queries_ignored()
     test_capi_fleetcarrier_capacity_parsed()
+    test_carrier_stats_sets_free_space()
     test_cargo_transfer_to_carrier()
     test_cargo_transfer_to_ship()
     test_cargo_transfer_updates_construction_site()
