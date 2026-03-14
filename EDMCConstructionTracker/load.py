@@ -227,7 +227,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
     status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
 
-    fc_capacity_label = tk.Label(frame, text="Remaining Cargo Space:", font=("Helvetica", 8), fg=_label_fg())
+    fc_capacity_label = tk.Label(frame, text="Carrier Free Space:", font=("Helvetica", 8), fg=_label_fg())
     fc_capacity_label.grid(row=6, column=0, sticky=tk.W)
     fc_capacity_value_label = tk.Label(frame, text="", font=("Helvetica", 8), fg=_value_fg())
     fc_capacity_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 4))
