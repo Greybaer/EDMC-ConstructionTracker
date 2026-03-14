@@ -223,16 +223,16 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     progress_value_widget = tk.Label(frame, textvariable=progress_var, font=("Helvetica", 9), fg=_value_fg())
     progress_value_widget.grid(row=4, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(4, 2))
 
-    status_var = tk.StringVar(value="Waiting for construction site data...")
-    status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
-    status_label_widget.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
-
-    fc_capacity_label = tk.Label(frame, text="Carrier Free Space:", font=("Helvetica", 8), fg=_label_fg())
-    fc_capacity_label.grid(row=6, column=0, sticky=tk.W)
-    fc_capacity_value_label = tk.Label(frame, text="", font=("Helvetica", 8), fg=_value_fg())
-    fc_capacity_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 4))
+    fc_capacity_label = tk.Label(frame, text="Carrier Free Space:", font=("Helvetica", 9), fg=_label_fg())
+    fc_capacity_label.grid(row=5, column=0, sticky=tk.W, pady=(4, 2))
+    fc_capacity_value_label = tk.Label(frame, text="", font=("Helvetica", 9), fg=_value_fg())
+    fc_capacity_value_label.grid(row=5, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(4, 2))
     fc_capacity_label.grid_remove()
     fc_capacity_value_label.grid_remove()
+
+    status_var = tk.StringVar(value="Waiting for construction site data...")
+    status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
+    status_label_widget.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
 
     material_frame = tk.Frame(frame)
     material_frame.grid(row=7, column=0, columnspan=3, sticky=tk.W)
@@ -656,8 +656,11 @@ def _cleanup_complete_sites() -> None:
 def _update_carrier_amounts() -> None:
     for mid, site_data in construction_sites.items():
         for mat in site_data["materials"]:
-            carrier_amount = carrier_cargo.get(mat["name_key"], 0)
             ship_amount = ship_cargo.get(mat["name_key"], 0)
+            if mat["provided"] >= mat["required"]:
+                carrier_amount = 0
+            else:
+                carrier_amount = carrier_cargo.get(mat["name_key"], 0)
             mat["carrier"] = carrier_amount
             mat["ship"] = ship_amount
             mat["completion"] = _calculate_completion(mat["required"], mat["provided"], carrier_amount, ship_amount)
