@@ -30,6 +30,7 @@ def _reset_plugin():
     plugin.capi_received = False
     plugin.carrier_total_capacity = None
     plugin.carrier_cargo_reserved = 0
+    plugin.carrier_loaded_cargo = None
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -628,6 +629,9 @@ def test_carrier_stats_saves_capacity_and_reserved():
     assert plugin.carrier_cargo_reserved == 200, (
         f"Expected 200, got {plugin.carrier_cargo_reserved}"
     )
+    assert plugin.carrier_loaded_cargo == 1050, (
+        f"Expected 1050, got {plugin.carrier_loaded_cargo}"
+    )
 
     print("[PASS] CarrierStats event saves total capacity and cargo reserved")
 
@@ -636,14 +640,14 @@ def test_carrier_stats_remaining_uses_live_cargo():
     _reset_plugin()
 
     plugin.carrier_total_capacity = 25000
-    plugin.carrier_cargo_reserved = 500
-    plugin.carrier_cargo = {"aluminium": 1000, "steel": 2000}
+    plugin.carrier_cargo_reserved = 200
+    plugin.carrier_loaded_cargo = 1050
 
-    expected = 25000 - 500 - 3000
-    actual = plugin.carrier_total_capacity - plugin.carrier_cargo_reserved - sum(plugin.carrier_cargo.values())
+    expected = 25000 - 200 - 1050
+    actual = plugin.carrier_total_capacity - plugin.carrier_cargo_reserved - plugin.carrier_loaded_cargo
     assert actual == expected, f"Expected {expected}, got {actual}"
 
-    print("[PASS] Remaining cargo space computed live from carrier_cargo")
+    print("[PASS] Remaining cargo space computed from carrier_loaded_cargo")
 
 
 def test_cargo_transfer_to_carrier():

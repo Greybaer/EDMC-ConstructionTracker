@@ -72,6 +72,7 @@ station_commodities: set = set()
 capi_received: bool = False
 carrier_total_capacity: Optional[int] = None
 carrier_cargo_reserved: int = 0
+carrier_loaded_cargo: Optional[int] = None
 
 frame = None
 site_selector = None
@@ -121,6 +122,7 @@ def _save_data() -> None:
             "carrier_cargo": carrier_cargo,
             "carrier_total_capacity": carrier_total_capacity,
             "carrier_cargo_reserved": carrier_cargo_reserved,
+            "carrier_loaded_cargo": carrier_loaded_cargo,
         }
         with open(path, "w") as f:
             json.dump(save_obj, f, indent=2)
@@ -130,7 +132,7 @@ def _save_data() -> None:
 
 
 def _load_data() -> None:
-    global hide_completed_materials, selected_site_id, construction_sites, carrier_cargo, carrier_total_capacity, carrier_cargo_reserved
+    global hide_completed_materials, selected_site_id, construction_sites, carrier_cargo, carrier_total_capacity, carrier_cargo_reserved, carrier_loaded_cargo
     path = _get_save_path()
     if not path or not os.path.exists(path):
         return
@@ -150,6 +152,9 @@ def _load_data() -> None:
         if saved_cap is not None:
             carrier_total_capacity = int(saved_cap)
         carrier_cargo_reserved = int(save_obj.get("carrier_cargo_reserved", 0))
+        saved_loaded = save_obj.get("carrier_loaded_cargo")
+        if saved_loaded is not None:
+            carrier_loaded_cargo = int(saved_loaded)
         logger.info(f"Loaded {len(construction_sites)} construction sites, {len(carrier_cargo)} carrier cargo items from save")
     except Exception as e:
         logger.error(f"Error loading data: {e}")
@@ -518,7 +523,7 @@ def _validate_pending_transfers() -> None:
 
 
 def _process_cargo_transfer(entry: Dict[str, Any]) -> None:
-    global carrier_cargo, pending_transfers
+    global carrier_cargo, pending_transfers, carrier_loaded_cargo
     transfers = entry.get("Transfers", [])
     for transfer in transfers:
         raw_name = transfer.get("Type", "")
@@ -540,12 +545,16 @@ def _process_cargo_transfer(entry: Dict[str, Any]) -> None:
 
         if direction == "tocarrier":
             carrier_cargo[name_key] = carrier_cargo.get(name_key, 0) + count
+            if carrier_loaded_cargo is not None:
+                carrier_loaded_cargo += count
             logger.info(f"CargoTransfer: +{count} {name_key} to carrier (now {carrier_cargo[name_key]})")
         elif direction == "toship":
             current = carrier_cargo.get(name_key, 0)
             carrier_cargo[name_key] = max(0, current - count)
             if carrier_cargo[name_key] == 0:
                 del carrier_cargo[name_key]
+            if carrier_loaded_cargo is not None:
+                carrier_loaded_cargo = max(0, carrier_loaded_cargo - count)
             logger.info(f"CargoTransfer: -{count} {name_key} from carrier (now {carrier_cargo.get(name_key, 0)})")
 
 
@@ -730,8 +739,8 @@ def _update_display() -> None:
     _refresh_label_colors()
 
     if fc_capacity_value_label and fc_capacity_label:
-        if carrier_total_capacity is not None:
-            remaining = carrier_total_capacity - carrier_cargo_reserved - sum(carrier_cargo.values())
+        if carrier_total_capacity is not None and carrier_loaded_cargo is not None:
+            remaining = carrier_total_capacity - carrier_cargo_reserved - carrier_loaded_cargo
             fc_capacity_value_label.config(text=f"{remaining:,}")
             fc_capacity_label.grid()
             fc_capacity_value_label.grid()
@@ -916,7 +925,7 @@ def journal_entry(
     entry: Dict[str, Any],
     state: Dict[str, Any],
 ) -> None:
-    global journal_dir, capi_received, carrier_total_capacity, carrier_cargo_reserved
+    global journal_dir, capi_received, carrier_total_capacity, carrier_cargo_reserved, carrier_loaded_cargo
 
     if journal_dir is None:
         jdir = state.get("JournalDir")
@@ -968,7 +977,8 @@ def journal_entry(
         if total is not None:
             carrier_total_capacity = int(total)
             carrier_cargo_reserved = int(space.get("CargoReserved", 0))
-            logger.info(f"CarrierStats: total={carrier_total_capacity}, reserved={carrier_cargo_reserved}")
+            carrier_loaded_cargo = int(space.get("Cargo", 0))
+            logger.info(f"CarrierStats: total={carrier_total_capacity}, reserved={carrier_cargo_reserved}, cargo={carrier_loaded_cargo}")
             _save_data()
             _update_display()
 
