@@ -625,9 +625,8 @@ def test_carrier_stats_saves_capacity_and_reserved():
     assert plugin.carrier_total_capacity == 25000, (
         f"Expected 25000, got {plugin.carrier_total_capacity}"
     )
-    expected_overhead = 25000 - 22820 - 1050  # TotalCapacity - FreeSpace - Cargo
-    assert plugin.carrier_cargo_reserved == expected_overhead, (
-        f"Expected {expected_overhead}, got {plugin.carrier_cargo_reserved}"
+    assert plugin.carrier_cargo_reserved == 200, (
+        f"Expected 200, got {plugin.carrier_cargo_reserved}"
     )
 
     print("[PASS] CarrierStats event saves total capacity and cargo reserved")

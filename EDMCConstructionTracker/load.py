@@ -967,10 +967,8 @@ def journal_entry(
         total = space.get("TotalCapacity")
         if total is not None:
             carrier_total_capacity = int(total)
-            free_space = int(space.get("FreeSpace", 0))
-            cargo_at_stats = int(space.get("Cargo", 0))
-            carrier_cargo_reserved = carrier_total_capacity - free_space - cargo_at_stats
-            logger.info(f"CarrierStats: total={carrier_total_capacity}, overhead={carrier_cargo_reserved} (free={free_space}, cargo={cargo_at_stats})")
+            carrier_cargo_reserved = int(space.get("CargoReserved", 0))
+            logger.info(f"CarrierStats: total={carrier_total_capacity}, reserved={carrier_cargo_reserved}")
             _save_data()
             _update_display()
 
