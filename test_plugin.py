@@ -29,8 +29,7 @@ def _reset_plugin():
     plugin.hide_completed_materials = False
     plugin.capi_received = False
     plugin.carrier_total_capacity = None
-    plugin.carrier_cargo_reserved = 0
-    plugin.carrier_loaded_cargo = None
+    plugin.carrier_free_space = None
     plugin.plugin_dir = _test_tmpdir
     save_path = os.path.join(_test_tmpdir, plugin.SAVE_FILE)
     if os.path.exists(save_path):
@@ -626,11 +625,8 @@ def test_carrier_stats_saves_capacity_and_reserved():
     assert plugin.carrier_total_capacity == 25000, (
         f"Expected 25000, got {plugin.carrier_total_capacity}"
     )
-    assert plugin.carrier_cargo_reserved == 200, (
-        f"Expected 200, got {plugin.carrier_cargo_reserved}"
-    )
-    assert plugin.carrier_loaded_cargo == 1050, (
-        f"Expected 1050, got {plugin.carrier_loaded_cargo}"
+    assert plugin.carrier_free_space == 22820, (
+        f"Expected 22820, got {plugin.carrier_free_space}"
     )
 
     print("[PASS] CarrierStats event saves total capacity and cargo reserved")
@@ -639,20 +635,19 @@ def test_carrier_stats_saves_capacity_and_reserved():
 def test_carrier_stats_remaining_uses_live_cargo():
     _reset_plugin()
 
-    plugin.carrier_total_capacity = 25000
-    plugin.carrier_cargo_reserved = 200
-    plugin.carrier_loaded_cargo = 1050
+    plugin.carrier_free_space = 22820
 
-    expected = 25000 - 200 - 1050
-    actual = plugin.carrier_total_capacity - plugin.carrier_cargo_reserved - plugin.carrier_loaded_cargo
-    assert actual == expected, f"Expected {expected}, got {actual}"
+    assert plugin.carrier_free_space == 22820, (
+        f"Expected 22820, got {plugin.carrier_free_space}"
+    )
 
-    print("[PASS] Remaining cargo space computed from carrier_loaded_cargo")
+    print("[PASS] Remaining cargo space uses FreeSpace from CarrierStats")
 
 
 def test_cargo_transfer_to_carrier():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100}
+    plugin.carrier_free_space = 5000
 
     entry = {
         "event": "CargoTransfer",
@@ -666,6 +661,7 @@ def test_cargo_transfer_to_carrier():
 
     assert plugin.carrier_cargo.get("aluminium") == 150
     assert plugin.carrier_cargo.get("steel") == 200
+    assert plugin.carrier_free_space == 4750, f"Expected 4750, got {plugin.carrier_free_space}"
 
     print("[PASS] CargoTransfer tocarrier adds to carrier cargo")
 
@@ -673,6 +669,7 @@ def test_cargo_transfer_to_carrier():
 def test_cargo_transfer_to_ship():
     _reset_plugin()
     plugin.carrier_cargo = {"aluminium": 100, "steel": 50}
+    plugin.carrier_free_space = 5000
 
     entry = {
         "event": "CargoTransfer",
@@ -686,6 +683,7 @@ def test_cargo_transfer_to_ship():
 
     assert plugin.carrier_cargo.get("aluminium") == 70
     assert "steel" not in plugin.carrier_cargo
+    assert plugin.carrier_free_space == 5080, f"Expected 5080, got {plugin.carrier_free_space}"
 
     print("[PASS] CargoTransfer toship removes from carrier cargo")
 
