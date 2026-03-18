@@ -90,8 +90,6 @@ progress_value_widget = None
 status_label_widget = None
 fc_capacity_label = None
 fc_capacity_value_label = None
-services_reserved_label = None
-services_reserved_value_label = None
 
 LABEL_FG_DEFAULT = "#000000"
 LABEL_FG_DARK = "#ff8c00"
@@ -194,7 +192,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     global frame, site_selector, site_var, progress_var, material_frame, status_var
     global header_label, site_label, progress_label_widget, progress_value_widget, status_label_widget
     global type_label, type_value_label, system_label, system_value_label
-    global fc_capacity_label, fc_capacity_value_label, services_reserved_label, services_reserved_value_label
+    global fc_capacity_label, fc_capacity_value_label
 
     frame = tk.Frame(parent)
 
@@ -232,19 +230,12 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     fc_capacity_label.grid_remove()
     fc_capacity_value_label.grid_remove()
 
-    services_reserved_label = tk.Label(frame, text="Services Reserved:", font=("Helvetica", 9), fg=_label_fg())
-    services_reserved_label.grid(row=6, column=0, sticky=tk.W, pady=(0, 2))
-    services_reserved_value_label = tk.Label(frame, text="", font=("Helvetica", 9), fg=_value_fg())
-    services_reserved_value_label.grid(row=6, column=1, columnspan=2, sticky=tk.W, padx=(4, 0), pady=(0, 2))
-    services_reserved_label.grid_remove()
-    services_reserved_value_label.grid_remove()
-
     status_var = tk.StringVar(value="Waiting for construction site data...")
     status_label_widget = tk.Label(frame, textvariable=status_var, font=("Helvetica", 8))
-    status_label_widget.grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
+    status_label_widget.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=(0, 2))
 
     material_frame = tk.Frame(frame)
-    material_frame.grid(row=8, column=0, columnspan=3, sticky=tk.W)
+    material_frame.grid(row=7, column=0, columnspan=3, sticky=tk.W)
 
     if construction_sites:
         _update_site_selector()
@@ -976,8 +967,10 @@ def journal_entry(
         total = space.get("TotalCapacity")
         if total is not None:
             carrier_total_capacity = int(total)
-            carrier_cargo_reserved = int(space.get("CargoReserved", 0))
-            logger.info(f"CarrierStats: total={carrier_total_capacity}, reserved={carrier_cargo_reserved}")
+            free_space = int(space.get("FreeSpace", 0))
+            cargo_at_stats = int(space.get("Cargo", 0))
+            carrier_cargo_reserved = carrier_total_capacity - free_space - cargo_at_stats
+            logger.info(f"CarrierStats: total={carrier_total_capacity}, overhead={carrier_cargo_reserved} (free={free_space}, cargo={cargo_at_stats})")
             _save_data()
             _update_display()
 
